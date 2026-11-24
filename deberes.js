@@ -135,7 +135,7 @@ const Deberes = (() => {
     return {
       id: s.id, fecha: s.fecha, leccion: s.leccion, titulo: s.titulo, inicio: s.inicio, fin,
       minutos: Math.max(1, Math.round((new Date(fin) - new Date(s.inicio)) / 60000)),
-      pausas: s.pausas, terminada,
+      pausas: s.pausas, terminada, aparato: Sync.lien()?.nombre || "",
       fallos: Object.values(s.fallos),
       pendientes: rejouables().length,
     };
@@ -148,19 +148,22 @@ const Deberes = (() => {
     S.fin = new Date().toISOString();
     const L = LECONS[S.leccion];
     if (L && L.repaso) {
-      const p = puntos();
+      const p = puntos(), fuera = lire("dorian.puntos.fuera", {});
       L.puntos.forEach((id) => {
         if (!p[id] || S.fallos[id]) return;
         if (!p[id].exitos.includes(S.id)) p[id].exitos.push(S.id);
-        if (p[id].exitos.length >= 2) delete p[id];
+        if (p[id].exitos.length >= 2) { delete p[id]; fuera[id] = new Date().toISOString(); }
       });
       ecrire(CLE_PUNTOS, p);
+      ecrire("dorian.puntos.fuera", fuera);
     }
     const h = hechas(); h[S.leccion] = S.fecha; ecrire(CLE_HECHAS, h);
+    const { id, leccion } = S;
     Sync.encoler(versEnvoi(S, true));
     try { localStorage.removeItem(CLE_EN_CURSO); } catch {}
     S = null;
     Sync.vider();
+    Tickets.ganar("s-" + id, { motivo: "sesion", leccion }); // 1 séance terminée = 1 partie (envoie aussi la progression)
   }
 
   // Au lancement : une séance commencée et jamais finie (appli fermée, il a craqué) part aussi, marquée « sin terminar ».
@@ -226,8 +229,9 @@ const Deberes = (() => {
   }
 
   // Le Repaso existe dès qu'il y a des points à revoir : l'écran du jour et la séance le trouvent dans LECONS.
-  const R = leconRepaso();
-  if (R) LECONS[REPASO] = R;
+  // Reconstruit aussi après la fusion de la progression (des points ratés ont pu arriver d'un autre téléphone).
+  function reconstruireRepaso() { const R = leconRepaso(); if (R) LECONS[REPASO] = R; else delete LECONS[REPASO]; }
+  reconstruireRepaso();
 
-  return { ICONE, nomEtape, semaine, deuxiemeSeance, matiere, jour, ecart, quand, choisir, leconDuJour, leconRepaso, puntos, rejouables, hechas, commencer, erreur, pause, terminer, recuperer, REPASO };
+  return { reconstruireRepaso, ICONE, nomEtape, semaine, deuxiemeSeance, matiere, jour, ecart, quand, choisir, leconDuJour, leconRepaso, puntos, rejouables, hechas, commencer, erreur, pause, terminer, recuperer, REPASO };
 })();

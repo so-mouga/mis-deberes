@@ -45,7 +45,8 @@
 </div>
 
 <script src="commun.js?v=10"></script>
-<script src="animaux.js?v=10"></script>
+<script src="animaux.js?v=11"></script>
+<script src="sync.js?v=3"></script>
 <script>
   const $ = (id) => document.getElementById(id);
   if (new URLSearchParams(location.search).has("reset")) localStorage.removeItem(CLE_COLLECTION);
@@ -77,6 +78,8 @@
     $("zoom").hidden = false;
     direSuite([[a.es + ".", "es-ES"], [a.dato, "es-ES"]]);
   }
+  // Les cromos gagnés sur un autre téléphone (celui de la abuela…) : si la collection a grandi, on la redessine.
+  Sync.synchroniserProgreso().then((ok) => { if (ok && collection().length !== a_moi.length) location.reload(); });
   $("fermer").addEventListener("click", () => { speechSynthesis.cancel(); $("zoom").hidden = true; });
 </script>
 </body>

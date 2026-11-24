@@ -58,6 +58,7 @@
   .sesion:first-child{border-top:0;padding-top:2px}
   .sesion .haut{display:flex;justify-content:space-between;gap:10px;font-size:14px;color:var(--encre-douce);font-weight:600}
   .sesion .quoi{font-weight:700;margin:1px 0 4px}
+  .sesion.regalo .quoi{color:var(--jaune);margin-bottom:0}
   .etiquette{display:inline-block;font-size:12px;font-weight:700;border-radius:6px;padding:1px 7px;margin-left:6px;background:rgba(255,255,255,.14);color:#fff;vertical-align:1px}
   .fallos{display:flex;flex-wrap:wrap;gap:6px}
   .fallos span{font-size:14px;font-weight:600;background:var(--ciel);color:var(--marine);border-radius:8px;padding:2px 8px}
@@ -74,6 +75,11 @@
   .entree textarea{font:inherit;font-size:14px;color:var(--marine);background:#fff;border:0;border-radius:10px;padding:10px;min-height:96px;resize:vertical;word-break:break-all}
   input.code{width:100%;text-align:center;font-size:32px;font-weight:800;letter-spacing:.5em;-webkit-text-security:disc;min-height:60px}
   .message{min-height:22px;font-size:15px;font-weight:600;color:#FFD0CC}
+  .appareil{display:flex;flex-direction:column;gap:10px}
+  .appareil input{font:inherit;font-size:16px;color:var(--marine);background:#fff;border:0;border-radius:10px;min-height:44px;padding:0 12px;flex:1;min-width:0}
+  .qr{align-self:center;background:#fff;border-radius:14px;padding:12px;line-height:0}
+  .qr svg{width:220px;height:220px}
+  .lienBranchement{font-size:12px;color:var(--encre-douce);word-break:break-all}
   ol.pas{padding-left:20px;color:var(--encre-douce);font-size:15px;display:flex;flex-direction:column;gap:4px}
 </style>
 </head>
@@ -130,6 +136,13 @@
     </section>
 
     <section class="carte" style="margin-top:14px">
+      <h2>Partidas de juego</h2>
+      <p id="partidas">…</p>
+      <div class="ligne" style="margin-top:10px"><button class="btn jaune" id="regalar">Regalar una partida</button></div>
+      <p class="aide">Cada sesión terminada le da una partida (nunca depende de los aciertos). Para los días sin deberes, como el fin de semana o las vacaciones, puedes regalarle una.</p>
+    </section>
+
+    <section class="carte" style="margin-top:14px">
       <h2>Lo que más le cuesta <small>últimas 2 semanas</small></h2>
       <ul class="cuesta" id="cuesta"></ul>
     </section>
@@ -137,6 +150,24 @@
     <section class="carte" style="margin-top:14px">
       <h2>Seguimiento <button class="lien" id="actualiser" style="padding:0">Actualizar</button></h2>
       <div id="sesiones"><p class="rien">Cargando…</p></div>
+    </section>
+
+    <section class="carte" style="margin-top:14px">
+      <h2>Añadir un móvil para Dorian</h2>
+      <div class="appareil">
+        <p class="aide" style="margin-top:0">Para el móvil de la abuela u otro: escribe su nombre y abre el enlace en ese móvil, o escanea el código con su cámara. No hay que escribir nada más.</p>
+        <div class="ligne">
+          <input id="nomAppareil" list="nomsAppareils" placeholder="móvil de la abuela" aria-label="Nombre del móvil" autocomplete="off">
+          <datalist id="nomsAppareils"><option value="móvil de la abuela"><option value="móvil de Dorian"><option value="tablet"></datalist>
+          <button class="btn jaune" id="creerLien">Crear</button>
+        </div>
+        <div id="resultatLien" class="appareil" hidden>
+          <div class="qr" id="qr"></div>
+          <div class="ligne" style="flex-wrap:wrap"><button class="btn" id="partager">Enviar el enlace</button><button class="btn" id="copier">Copiar</button></div>
+          <p class="lienBranchement" id="texteLien"></p>
+          <p class="aide">El enlace lleva la clave: envíalo solo a la familia.</p>
+        </div>
+      </div>
     </section>
 
     <section class="carte" style="margin-top:14px">
@@ -152,8 +183,8 @@
 
 <script src="lecons.js?v=11"></script>
 <script src="maths.js?v=14"></script>
-<script src="sync.js?v=1"></script>
-<script src="deberes.js?v=2"></script>
+<script src="sync.js?v=3"></script>
+<script src="deberes.js?v=4"></script>
 <script>
   const $ = (id) => document.getElementById(id);
   const ecrans = ["ecranLien", "ecranCode", "contenu"];
@@ -175,6 +206,8 @@
 
   let A = null;          // les réglages
   let S = [];            // les séances
+  let P = null;          // la progression de Dorian (cromos, tickets…), fusionnée entre ses téléphones
+  const REGALOS = "dorian.papas.regalos"; // les parties offertes pas encore parties (pas de réseau)
   const hoy = () => Deberes.jour();
   const MATIERE = { en: "Inglés", fr: "Francés", ma: "Mates" };
   const RANG = Object.keys(MATIERE);
@@ -268,14 +301,20 @@
   const etiquetteFallo = (f) => (f.tipo === "mates" ? { "total/diferencia": "¿total o diferencia?", "sumar/restar": "¿sumar o restar?", unidades: "unidades", decenas: "decenas", palitos: "palitos (decenas y unidades)" }[f.txt] || f.txt : f.txt);
 
   function afficherSesiones() {
-    if (!S.length) { $("sesiones").innerHTML = `<p class="rien">Todavía no hay sesiones. Aparecerán aquí cuando Dorian termine una.</p>`; $("cuesta").innerHTML = `<li class="rien">Nada por ahora.</li>`; return; }
-    $("sesiones").innerHTML = S.slice(0, 30).map((s) => {
+    afficherPartidas();
+    if (!S.length && !Object.keys((P && P.tickets && P.tickets.ganados) || {}).length) { $("sesiones").innerHTML = `<p class="rien">Todavía no hay sesiones. Aparecerán aquí cuando Dorian termine una.</p>`; $("cuesta").innerHTML = `<li class="rien">Nada por ahora.</li>`; return; }
+    // Les parties offertes apparaissent dans le suivi, à leur date, au milieu des séances.
+    const regalos = Object.entries((P && P.tickets && P.tickets.ganados) || {}).filter(([, t]) => t.motivo === "regalo")
+      .map(([, t]) => ({ regalo: true, inicio: t.fecha }));
+    const lignes = [...S, ...regalos].sort((x, y) => String(y.inicio).localeCompare(String(x.inicio))).slice(0, 30);
+    $("sesiones").innerHTML = lignes.map((s) => {
+      if (s.regalo) return `<div class="sesion regalo"><div class="haut"><span>${dateLongue(s.inicio)} · ${heure(s.inicio)}</span></div><p class="quoi">Partida regalada</p></div>`;
       const titre = s.leccion === Deberes.REPASO ? s.titulo : LECONS[s.leccion]?.titre || s.titulo || s.leccion;
       const fallos = s.fallos.length
         ? `<div class="fallos">${s.fallos.map((f) => `<span>${echap(etiquetteFallo(f))}${f.n > 1 ? ` <i>×${f.n}</i>` : ""}</span>`).join("")}</div>`
         : `<p class="rien">Sin fallos.</p>`;
       return `<div class="sesion">
-        <div class="haut"><span>${dateLongue(s.inicio)} · ${heure(s.inicio)}</span><span>${s.minutos} min · ${s.pausas ? s.pausas + (s.pausas > 1 ? " pausas" : " pausa") : "sin pausas"}</span></div>
+        <div class="haut"><span>${dateLongue(s.inicio)} · ${heure(s.inicio)}${s.aparato ? " · " + echap(s.aparato) : ""}</span><span>${s.minutos} min · ${s.pausas ? s.pausas + (s.pausas > 1 ? " pausas" : " pausa") : "sin pausas"}</span></div>
         <p class="quoi">${echap(titre)}${s.terminada ? "" : `<span class="etiquette">sin terminar</span>`}</p>${fallos}</div>`;
     }).join("");
     // Ce qui revient le plus : en combien de séances c'est arrivé (pas de note, pas de pourcentage).
@@ -289,7 +328,7 @@
     $("cuesta").innerHTML = top.length
       ? top.map(({ f, n }) => `<li><span>${echap(etiquetteFallo(f))}</span><small>${echap(LECONS[f.leccion]?.court || "")} · ${n} ${n > 1 ? "sesiones" : "sesión"}</small></li>`).join("")
       : `<li class="rien">Nada en estas dos semanas.</li>`;
-    const p = S[0].pendientes;
+    const p = S[0]?.pendientes || 0;
     $("repasoInfo").textContent = p
       ? `Ese día, la app propone un repaso con lo que le costó (ahora: ${p} ${p > 1 ? "cosas" : "cosa"} por repasar).`
       : "Ese día, si hay cosas que le costaron, la app propone un repaso que las mezcla. Ahora no hay nada por repasar.";
@@ -301,9 +340,11 @@
     afficherReglages();
     etat("attente", "Sincronizando…");
     try {
-      const [a, s] = await Promise.all([Sync.rafraichirAjustes(), Sync.sesiones()]);
+      const [a, s, p] = await Promise.all([Sync.rafraichirAjustes(), Sync.sesiones(), Sync.lireProgreso().catch(() => null)]);
       A = { ...a, ...lireLocal(PENDIENTE, {}) };
       S = s || [];
+      P = p;
+      envoyerRegalos();
       afficherReglages(); afficherSesiones();
       if (lireLocal(PENDIENTE, null)) envoyer();
       else etat("ok", "Al día · " + heure(new Date()));
@@ -370,6 +411,61 @@
     if (!confirm("¿Desconectar este teléfono? Habrá que pegar otra vez el enlace del script.")) return;
     Sync.debrancher(); sessionStorage.removeItem(OUVERT); montrer("ecranLien");
   });
+
+  // ---------- Ajouter un appareil pour Dorian : un lien (et son QR code) à ouvrir sur le nouvel appareil ----------
+  let lienCree = "";
+  $("creerLien").addEventListener("click", async () => {
+    const nombre = $("nomAppareil").value.trim() || "móvil de la abuela";
+    lienCree = Sync.lienBranchement(new URL("index.html", location.href).href, nombre);
+    $("texteLien").textContent = lienCree;
+    $("resultatLien").hidden = false;
+    $("qr").innerHTML = "";
+    try {
+      // La bibliothèque du QR code n'est chargée qu'ici (rien d'autre n'en a besoin).
+      if (!window.qrcode) await new Promise((ok, ko) => { const sc = document.createElement("script"); sc.src = "https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"; sc.onload = ok; sc.onerror = ko; document.head.append(sc); });
+      const q = qrcode(0, "M"); q.addData(lienCree); q.make();
+      $("qr").innerHTML = q.createSvgTag({ scalable: true, margin: 0 });
+    } catch { $("qr").innerHTML = `<p class="rien" style="color:#55617A;line-height:1.4">Sin conexión: no se puede dibujar el código. Usa «Enviar el enlace».</p>`; }
+    $("partager").hidden = !navigator.share;
+  });
+  $("partager").addEventListener("click", () => navigator.share({ title: "Deberes de Dorian", text: "Abre este enlace en el móvil para conectarlo:", url: lienCree }).catch(() => {}));
+  $("copier").addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText(lienCree); $("copier").textContent = "¡Copiado!"; }
+    catch { prompt("Copia el enlace:", lienCree); }
+  });
+
+  // ---------- Les parties de jeu ----------
+  function afficherPartidas() {
+    const t = (P && P.tickets) || { ganados: {}, gastados: {} };
+    const enAttente = Object.keys(lireLocal(REGALOS, {})).filter((k) => !t.ganados[k]).length;
+    const n = Math.max(0, Object.keys(t.ganados).length - Object.keys(t.gastados).length) + enAttente;
+    $("partidas").textContent = P || enAttente
+      ? (n ? `Dorian tiene ${n} ${n > 1 ? "partidas" : "partida"} para jugar.` : "Dorian no tiene partidas pendientes.") + (enAttente ? " (Un regalo está esperando conexión.)" : "")
+      : "Sin conexión: no se puede ver cuántas partidas tiene.";
+  }
+  // Un cadeau a un id unique : s'il part deux fois (réseau qui coupe), il ne compte qu'une fois.
+  async function envoyerRegalos() {
+    const attente = lireLocal(REGALOS, {});
+    if (!Object.keys(attente).length) return;
+    try {
+      P = await Sync.ajouterProgreso({ tickets: { ganados: attente, gastados: {} } });
+      const reste = lireLocal(REGALOS, {});
+      Object.keys(attente).forEach((k) => delete reste[k]);
+      ecrireLocal(REGALOS, Object.keys(reste).length ? reste : null);
+      etat("ok", "Partida regalada · " + heure(new Date()));
+    } catch (err) {
+      etat("erreur", "Regalo no enviado (" + err.message + ")", false);
+    }
+    afficherSesiones();
+  }
+  $("regalar").addEventListener("click", () => {
+    if (!confirm("¿Regalar una partida a Dorian?")) return;
+    const id = "r-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    ecrireLocal(REGALOS, { ...lireLocal(REGALOS, {}), [id]: { fecha: new Date().toISOString(), motivo: "regalo" } });
+    afficherPartidas();
+    envoyerRegalos();
+  });
+  window.addEventListener("online", envoyerRegalos);
 
   function ouvrir() { montrer("contenu"); charger(); }
 

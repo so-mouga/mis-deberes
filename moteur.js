@@ -362,6 +362,7 @@ const DEMO = PARAMS.has("demo");
 const REGISTRAR = !DEMO || PARAMS.has("registro");
 Deberes.recuperer(); // une séance d'avant restée inachevée part dans la file
 Sync.vider();
+Sync.synchroniserProgreso(); // les cromos des autres téléphones : le sobre ne donnera pas un animal déjà gagné ailleurs
 if (DEMO) { window.dire = async () => {}; demoFaite = true; if (PARAMS.has("pause")) setTimeout(() => $("pause").click(), 300); }
 
 (async () => {

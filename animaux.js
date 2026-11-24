@@ -38,7 +38,12 @@ const ANIMAUX = [
 // ---- La collection, gardée sur le téléphone ----
 const CLE_COLLECTION = "dorian.animales";
 const collection = () => { try { return JSON.parse(localStorage.getItem(CLE_COLLECTION)) || []; } catch { return []; } };
-const garder = (n) => { const c = collection(); if (!c.includes(n)) { c.push(n); localStorage.setItem(CLE_COLLECTION, JSON.stringify(c)); } };
+// Un nouveau cromo part aussi vers le Sheet (sync.js), pour le retrouver sur ses autres téléphones.
+const garder = (n) => {
+  const c = collection();
+  if (!c.includes(n)) { c.push(n); localStorage.setItem(CLE_COLLECTION, JSON.stringify(c)); }
+  if (typeof Sync !== "undefined") Sync.synchroniserProgreso();
+};
 
 // Tire un animal jamais gagné (pas de doubles). Les dorés n'arrivent qu'après les 4 premiers.
 function tirerAnimal() {

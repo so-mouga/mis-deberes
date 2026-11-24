@@ -77,17 +77,21 @@
 <script src="commun.js?v=10"></script>
 <script src="lecons.js?v=11"></script>
 <script src="maths.js?v=14"></script>
-<script src="animaux.js?v=10"></script>
-<script src="sync.js?v=1"></script>
-<script src="deberes.js?v=2"></script>
+<script src="animaux.js?v=11"></script>
+<script src="sync.js?v=3"></script>
+<script src="deberes.js?v=4"></script>
 <script>
   // La séance du jour est choisie par deberes.js (réglages des parents, contrôles, Repaso) ; ?lecon=X l'impose.
   const DEMANDEE = new URLSearchParams(location.search).get("lecon");
   const $ = (id) => document.getElementById(id);
   $("ecouter").innerHTML = ICONES.hautparleur;
-  const mes = collection();
-  $("compte").textContent = `${mes.length} de ${ANIMAUX.length}`;
-  mes.slice(-3).forEach((n) => $("derniers").append(cromoAnimal(ANIMAUX.find((a) => a.n === n), { noms: false })));
+  function afficherAnimaux() {
+    const mes = collection();
+    $("compte").textContent = `${mes.length} de ${ANIMAUX.length}`;
+    $("derniers").innerHTML = "";
+    mes.slice(-3).forEach((n) => $("derniers").append(cromoAnimal(ANIMAUX.find((a) => a.n === n), { noms: false })));
+  }
+  afficherAnimaux();
 
   let ID;
   function afficher() {
@@ -110,10 +114,28 @@
     dire(`¡Hola Dorian! Hoy: ${LECONS[ID].titre}. Al terminar, abrirás un sobre con un animal sorpresa. Toca: a los deberes.`));
 
   // Synchronisation : une séance restée en attente part, et les réglages des parents arrivent (sans rien bloquer).
-  Deberes.recuperer();
-  Sync.vider();
-  Sync.rafraichirAjustes().then((a) => { if (a && !DEMANDEE) afficher(); }).catch((err) => console.warn("Ajustes:", err.message));
-  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") Sync.vider(); });
+  // La progression (cromos, leçons faites, points à revoir) est fusionnée avec celle des autres téléphones de Dorian.
+  function synchroniser() {
+    Deberes.recuperer();
+    Sync.vider();
+    Promise.all([
+      Sync.rafraichirAjustes().catch((err) => { console.warn("Ajustes:", err.message); return null; }),
+      Sync.synchroniserProgreso(),
+    ]).then(([a, p]) => {
+      if (p) { Deberes.reconstruireRepaso(); afficherAnimaux(); }
+      if (a || p) afficher();
+    });
+  }
+
+  // Brancher un nouvel appareil avec le lien (ou le QR code) créé sur la page des parents : …#conectar=…&nombre=…
+  const H = new URLSearchParams(location.hash.slice(1));
+  if (H.get("conectar")) {
+    history.replaceState(null, "", location.pathname + location.search); // la clé ne reste pas dans l'adresse
+    Sync.brancher(H.get("conectar"), H.get("nombre") || "")
+      .then(() => { alert("¡Listo! Este móvil está conectado" + (H.get("nombre") ? ": " + H.get("nombre") : "") + ". Los cromos y los deberes de Dorian llegarán solos."); synchroniser(); })
+      .catch((err) => alert("No se pudo conectar: " + err.message + ". Prueba otra vez con conexión."));
+  } else synchroniser();
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { Sync.vider(); Sync.synchroniserProgreso(); } });
 
   // Brancher ce téléphone sur le Google Sheet : appui long (2 s) sur « ¡Hola, Dorian! ». Rien de visible pour Dorian.
   let appui;
@@ -125,7 +147,8 @@
     const ya = Sync.lien();
     const texte = prompt((ya ? "Este teléfono ya está conectado.\n" : "") + "Pega el enlace del script de Google (termina en /exec#clave):");
     if (!texte) return;
-    try { await Sync.brancher(texte); await Sync.vider(); afficher(); alert("Conectado. Los ajustes de papá y mamá llegarán solos."); }
+    const nombre = prompt("¿Cómo se llama este móvil? (por ejemplo: móvil de Dorian, móvil de la abuela)", ya?.nombre || "móvil de Dorian");
+    try { await Sync.brancher(texte, nombre || ""); alert("Conectado. Los ajustes de papá y mamá llegarán solos."); synchroniser(); }
     catch (err) { alert("No se pudo conectar: " + err.message + "."); }
   }
 </script>
