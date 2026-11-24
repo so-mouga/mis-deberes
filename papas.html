@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1A3580">
+<meta name="robots" content="noindex,nofollow">
+<title>Espacio de papás</title>
+<link rel="preload" href="assets/fonts/lexend-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="style.css?v=10">
+<style>
+  /* Écran pour adultes (mode Operate) : même palette que l'album, mais sobre et dense. */
+  body{user-select:auto;-webkit-user-select:auto}
+  .papas{max-width:560px;margin:0 auto;padding:max(14px,env(safe-area-inset-top)) 16px max(28px,env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:14px;font-size:16px;line-height:1.45}
+  .tete{display:flex;align-items:center;gap:10px;justify-content:space-between;flex-wrap:wrap}
+  .tete .bandeau{font-size:20px;padding:6px 12px 7px}
+  #estado{font-size:14px;font-weight:600;color:var(--encre-douce);display:flex;align-items:center;gap:6px}
+  #estado::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--encre-douce)}
+  #estado.ok::before{background:#5ED38A}
+  #estado.attente::before{background:var(--jaune)}
+  #estado.erreur{color:#FFD0CC}
+  #estado.erreur::before{background:var(--rouge)}
+  #estado button{font-size:14px;font-weight:700;text-decoration:underline;color:#fff}
+
+  .carte{background:var(--page-fonce);border-radius:16px;padding:14px 16px}
+  .carte h2{font-size:18px;font-weight:800;margin-bottom:8px;display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+  .carte h2 small{font-size:14px;font-weight:600;color:var(--encre-douce)}
+  .aide{font-size:14px;color:var(--encre-douce);margin-top:6px}
+  h3{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--jaune);margin:12px 0 2px}
+  h3:first-of-type{margin-top:2px}
+
+  .hoy{display:flex;align-items:center;gap:12px;background:#fff;color:var(--marine)}
+  .hoy .titre{flex:1}
+  .hoy .titre span{display:block;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#55617A}
+  .hoy b{display:block;font-size:19px;font-weight:800;line-height:1.25}
+  .hoy small{display:block;font-size:14px;color:#55617A}
+
+  select,input[type=date],input.code{font:inherit;font-size:16px;color:var(--marine);background:#fff;border:0;border-radius:10px;min-height:44px;padding:0 12px}
+  select{width:100%}
+  input[type=date]{min-width:0;width:100%;padding:0 8px}
+  input:focus-visible,select:focus-visible{outline:3px solid var(--jaune);outline-offset:2px}
+
+  .tema{display:grid;grid-template-columns:auto 1fr 150px;align-items:center;gap:10px;padding:9px 0;border-top:1px solid rgba(255,255,255,.12)}
+  h3 + .tema{border-top:0}
+  .tema input[type=checkbox]{width:24px;height:24px;accent-color:var(--jaune);margin:0}
+  .tema label{font-weight:700;line-height:1.25;cursor:pointer}
+  .tema label small{display:block;font-weight:500;font-size:14px;color:var(--encre-douce)}
+  .tema .control{display:flex;flex-direction:column;gap:2px;font-size:12px;font-weight:600;color:var(--encre-douce)}
+  .tema:not(.coche) .control{opacity:.55}
+
+  .ligne{display:flex;gap:10px;align-items:center}
+  .btn{font-weight:700;font-size:15px;min-height:44px;padding:0 16px;border-radius:12px;background:rgba(255,255,255,.12);color:#fff}
+  .btn.jaune{background:var(--jaune);color:var(--marine)}
+  .btn:active{transform:translateY(1px)}
+  .lien{font-size:14px;font-weight:600;color:var(--encre-douce);text-decoration:underline;padding:8px 0}
+
+  .sesion{padding:10px 0;border-top:1px solid rgba(255,255,255,.12)}
+  .sesion:first-child{border-top:0;padding-top:2px}
+  .sesion .haut{display:flex;justify-content:space-between;gap:10px;font-size:14px;color:var(--encre-douce);font-weight:600}
+  .sesion .quoi{font-weight:700;margin:1px 0 4px}
+  .etiquette{display:inline-block;font-size:12px;font-weight:700;border-radius:6px;padding:1px 7px;margin-left:6px;background:rgba(255,255,255,.14);color:#fff;vertical-align:1px}
+  .fallos{display:flex;flex-wrap:wrap;gap:6px}
+  .fallos span{font-size:14px;font-weight:600;background:var(--ciel);color:var(--marine);border-radius:8px;padding:2px 8px}
+  .fallos span i{font-style:normal;color:#55617A;font-weight:700}
+  .rien{font-size:14px;color:var(--encre-douce)}
+  .cuesta{list-style:none;display:flex;flex-direction:column;gap:4px}
+  .cuesta li{display:flex;justify-content:space-between;gap:10px;font-weight:600}
+  .cuesta li small{color:var(--encre-douce);font-weight:500;white-space:nowrap}
+
+  /* Écrans d'entrée : lien du script, code */
+  .entree{display:flex;flex-direction:column;gap:12px;margin-top:8vh}
+  .entree h1{font-size:26px;font-weight:850;letter-spacing:-.01em}
+  .entree p{color:var(--encre-douce)}
+  .entree textarea{font:inherit;font-size:14px;color:var(--marine);background:#fff;border:0;border-radius:10px;padding:10px;min-height:96px;resize:vertical;word-break:break-all}
+  input.code{width:100%;text-align:center;font-size:32px;font-weight:800;letter-spacing:.5em;-webkit-text-security:disc;min-height:60px}
+  .message{min-height:22px;font-size:15px;font-weight:600;color:#FFD0CC}
+  ol.pas{padding-left:20px;color:var(--encre-douce);font-size:15px;display:flex;flex-direction:column;gap:4px}
+</style>
+</head>
+<body>
+<main class="papas">
+
+  <!-- 1. Première ouverture sur ce téléphone : le lien du script -->
+  <section class="entree" id="ecranLien" hidden>
+    <span class="bandeau">Espacio de papás</span>
+    <h1>Conectar este teléfono</h1>
+    <p>Pega el enlace del script de Google «Deberes Dorian». Termina en <b>/exec#</b> seguido de la clave. Solo se pide una vez.</p>
+    <textarea id="champLien" placeholder="https://script.google.com/macros/s/…/exec#…" autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>
+    <p class="message" id="msgLien" role="alert"></p>
+    <button class="btn jaune" id="okLien">Conectar</button>
+  </section>
+
+  <!-- 2. Le code à 4 chiffres (le choisir la première fois, puis le taper) -->
+  <section class="entree" id="ecranCode" hidden>
+    <span class="bandeau">Espacio de papás</span>
+    <h1 id="titreCode">Código de papás</h1>
+    <p id="texteCode">Escribe el código de 4 cifras.</p>
+    <input class="code" id="champCode" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" aria-label="Código de 4 cifras">
+    <p class="message" id="msgCode" role="alert"></p>
+    <button class="lien" id="oubli">¿Olvidaste el código?</button>
+  </section>
+
+  <!-- 3. L'espace parent -->
+  <div id="contenu" hidden>
+    <div class="tete">
+      <span class="bandeau">Espacio de papás</span>
+      <span id="estado" aria-live="polite">…</span>
+    </div>
+
+    <section class="carte hoy" style="margin-top:14px">
+      <div class="titre"><span>Hoy en el teléfono de Dorian</span><b id="hoyTitre">…</b><small id="hoyMotif"></small></div>
+    </section>
+
+    <section class="carte" style="margin-top:14px">
+      <h2>Forzar la sesión de hoy</h2>
+      <select id="forzar" aria-label="Sesión de hoy"></select>
+      <p class="aide">Solo vale para hoy y pasa por delante de todo. Mañana vuelve a ser automático.</p>
+    </section>
+
+    <section class="carte" style="margin-top:14px">
+      <h2>Temas de la semana</h2>
+      <div id="temas"></div>
+      <p class="aide">La app alterna los temas marcados. Si hay un control en los próximos 3 días (hoy incluido), ese tema va primero.</p>
+    </section>
+
+    <section class="carte" style="margin-top:14px">
+      <h2>Repaso semanal</h2>
+      <div class="ligne"><select id="repasoDia" aria-label="Día del repaso"></select></div>
+      <p class="aide" id="repasoInfo">Ese día, si hay cosas que le costaron, la app propone un repaso que las mezcla.</p>
+    </section>
+
+    <section class="carte" style="margin-top:14px">
+      <h2>Lo que más le cuesta <small>últimas 2 semanas</small></h2>
+      <ul class="cuesta" id="cuesta"></ul>
+    </section>
+
+    <section class="carte" style="margin-top:14px">
+      <h2>Seguimiento <button class="lien" id="actualiser" style="padding:0">Actualizar</button></h2>
+      <div id="sesiones"><p class="rien">Cargando…</p></div>
+    </section>
+
+    <section class="carte" style="margin-top:14px">
+      <h2>Ajustes</h2>
+      <div class="ligne" style="flex-wrap:wrap">
+        <button class="btn" id="changerCode">Cambiar el código</button>
+        <button class="btn" id="verrouiller">Cerrar</button>
+        <button class="btn" id="deconnecter">Desconectar este teléfono</button>
+      </div>
+    </section>
+  </div>
+</main>
+
+<script src="lecons.js?v=11"></script>
+<script src="maths.js?v=14"></script>
+<script src="sync.js?v=1"></script>
+<script src="deberes.js?v=2"></script>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const ecrans = ["ecranLien", "ecranCode", "contenu"];
+  const montrer = (id) => ecrans.forEach((e) => ($(e).hidden = e !== id));
+  const echap = (t) => String(t ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  const OUVERT = "dorian.papas.abierto"; // sessionStorage : le code a été tapé dans cet onglet
+  const PENDIENTE = "dorian.papas.pendiente"; // des réglages pas encore partis (pas de réseau)
+  const lireLocal = (cle, d) => { try { return JSON.parse(localStorage.getItem(cle)) ?? d; } catch { return d; } };
+  const ecrireLocal = (cle, v) => { try { v == null ? localStorage.removeItem(cle) : localStorage.setItem(cle, JSON.stringify(v)); } catch {} };
+
+  // Le code n'est jamais gardé en clair : une empreinte, salée par la clé du script. (Barrière d'écran seulement :
+  // la vraie protection des données, c'est la clé.)
+  function empreinte(code) {
+    const t = "dorian|" + (Sync.lien()?.cle || "") + "|" + code;
+    let h = 0x811c9dc5;
+    for (let i = 0; i < t.length; i++) { h ^= t.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+    return "f1:" + h.toString(16);
+  }
+
+  let A = null;          // les réglages
+  let S = [];            // les séances
+  const hoy = () => Deberes.jour();
+  const MATIERE = { en: "Inglés", fr: "Francés", ma: "Mates" };
+  const RANG = Object.keys(MATIERE);
+  // Les leçons, regroupées par matière (dans l'ordre de lecons.js à l'intérieur de chaque matière).
+  const LISTE = Object.keys(LECONS).filter((k) => k !== Deberes.REPASO)
+    .map((k, i) => [k, i]).sort((a, b) => (RANG.indexOf(a[0].slice(0, 2)) + 1 || 9) - (RANG.indexOf(b[0].slice(0, 2)) + 1 || 9) || a[1] - b[1]).map(([k]) => k);
+  const DIAS = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+
+  // ---------- État de la synchronisation ----------
+  function etat(classe, texte, reessayer = false) {
+    const e = $("estado");
+    e.className = classe;
+    e.innerHTML = echap(texte) + (reessayer ? ' <button id="reessayer">Reintentar</button>' : "");
+    if (reessayer) $("reessayer").onclick = () => envoyer();
+  }
+  const heure = (iso) => new Date(iso).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+
+  // ---------- Enregistrer : chaque changement part tout de suite (regroupé), et attend s'il n'y a pas de réseau ----------
+  let minuterie;
+  function changer(partiels) {
+    A = { ...A, ...partiels };
+    ecrireLocal(PENDIENTE, { ...lireLocal(PENDIENTE, {}), ...partiels });
+    afficherHoy();
+    etat("attente", "Guardando…");
+    clearTimeout(minuterie);
+    minuterie = setTimeout(envoyer, 500);
+  }
+  async function envoyer() {
+    const p = lireLocal(PENDIENTE, null);
+    if (!p) return;
+    etat("attente", "Guardando…");
+    try {
+      A = await Sync.guardarAjustes(p);
+      // Ce qui a changé pendant l'envoi reste à envoyer.
+      const reste = lireLocal(PENDIENTE, {});
+      Object.keys(p).forEach((k) => { if (JSON.stringify(reste[k]) === JSON.stringify(p[k])) delete reste[k]; });
+      ecrireLocal(PENDIENTE, Object.keys(reste).length ? reste : null);
+      if (Object.keys(reste).length) return envoyer();
+      etat("ok", "Guardado · " + heure(new Date()));
+    } catch (err) {
+      etat("erreur", "No guardado (" + err.message + ")", true);
+    }
+  }
+  window.addEventListener("online", envoyer);
+
+  // ---------- Afficher ----------
+  function afficherHoy() {
+    // Même règle que sur le téléphone de Dorian, avec l'historique du suivi.
+    const hechas = {};
+    [...S].reverse().forEach((s) => { if (s.terminada) hechas[s.leccion] = s.fecha; });
+    const pendientes = S[0]?.pendientes || 0;
+    const c = Deberes.choisir({ ajustes: A, hechas, repaso: pendientes ? {} : null, hoy: hoy() });
+    $("hoyTitre").textContent = c.id === Deberes.REPASO ? "Repaso de la semana" : LECONS[c.id]?.titre || c.id;
+    $("hoyMotif").textContent = c.motivo;
+  }
+
+  function afficherReglages() {
+    const f = A.forzada && A.forzada.fecha === hoy() ? A.forzada.lecon : "";
+    $("forzar").innerHTML = `<option value="">Automático</option>` + LISTE.map((k) => `<option value="${k}"${k === f ? " selected" : ""}>${echap(LECONS[k].titre)}</option>`).join("");
+    const temas = A.temas || {};
+    let html = "", groupe = "";
+    LISTE.forEach((k) => {
+      const g = MATIERE[k.slice(0, 2)] || "Otros";
+      if (g !== groupe) { html += `<h3>${g}</h3>`; groupe = g; }
+      const t = temas[k] || {};
+      html += `<div class="tema${t.semana ? " coche" : ""}" data-k="${k}">
+        <input type="checkbox" id="s-${k}"${t.semana ? " checked" : ""}>
+        <label for="s-${k}">${echap(LECONS[k].court)}<small>${echap(LECONS[k].sujet)}</small></label>
+        <span class="control">Control<input type="date" value="${t.control || ""}" aria-label="Fecha del control: ${echap(LECONS[k].court)}"></span>
+      </div>`;
+    });
+    $("temas").innerHTML = html;
+    $("repasoDia").innerHTML = [1, 2, 3, 4, 5, 6, 0].map((d) => `<option value="${d}"${d === +(A.repasoDia ?? 5) ? " selected" : ""}>Cada ${DIAS[d]}</option>`).join("");
+    afficherHoy();
+  }
+
+  $("forzar").addEventListener("change", (ev) => changer({ forzada: ev.target.value ? { lecon: ev.target.value, fecha: hoy() } : null }));
+  $("repasoDia").addEventListener("change", (ev) => changer({ repasoDia: +ev.target.value }));
+  $("temas").addEventListener("change", (ev) => {
+    const ligne = ev.target.closest(".tema");
+    if (!ligne) return;
+    const k = ligne.dataset.k;
+    const temas = JSON.parse(JSON.stringify(A.temas || {}));
+    const t = (temas[k] ??= {});
+    if (ev.target.type === "checkbox") { t.semana = ev.target.checked; ligne.classList.toggle("coche", t.semana); }
+    else { t.control = ev.target.value || ""; if (t.control && !t.semana) { t.semana = true; ligne.querySelector("[type=checkbox]").checked = true; ligne.classList.add("coche"); } }
+    changer({ temas });
+  });
+
+  const dateLongue = (iso) => new Date(iso).toLocaleDateString("es-ES", { weekday: "short", day: "numeric", month: "short" });
+  const etiquetteFallo = (f) => (f.tipo === "mates" ? { "total/diferencia": "¿total o diferencia?", "sumar/restar": "¿sumar o restar?", unidades: "unidades", decenas: "decenas", palitos: "palitos (decenas y unidades)" }[f.txt] || f.txt : f.txt);
+
+  function afficherSesiones() {
+    if (!S.length) { $("sesiones").innerHTML = `<p class="rien">Todavía no hay sesiones. Aparecerán aquí cuando Dorian termine una.</p>`; $("cuesta").innerHTML = `<li class="rien">Nada por ahora.</li>`; return; }
+    $("sesiones").innerHTML = S.slice(0, 30).map((s) => {
+      const titre = s.leccion === Deberes.REPASO ? s.titulo : LECONS[s.leccion]?.titre || s.titulo || s.leccion;
+      const fallos = s.fallos.length
+        ? `<div class="fallos">${s.fallos.map((f) => `<span>${echap(etiquetteFallo(f))}${f.n > 1 ? ` <i>×${f.n}</i>` : ""}</span>`).join("")}</div>`
+        : `<p class="rien">Sin fallos.</p>`;
+      return `<div class="sesion">
+        <div class="haut"><span>${dateLongue(s.inicio)} · ${heure(s.inicio)}</span><span>${s.minutos} min · ${s.pausas ? s.pausas + (s.pausas > 1 ? " pausas" : " pausa") : "sin pausas"}</span></div>
+        <p class="quoi">${echap(titre)}${s.terminada ? "" : `<span class="etiquette">sin terminar</span>`}</p>${fallos}</div>`;
+    }).join("");
+    // Ce qui revient le plus : en combien de séances c'est arrivé (pas de note, pas de pourcentage).
+    const limite = Deberes.jour(new Date(Date.now() - 14 * 864e5));
+    const compte = {};
+    S.filter((s) => s.fecha >= limite).forEach((s) => s.fallos.forEach((f) => {
+      const k = f.leccion + "|" + f.txt;
+      (compte[k] ??= { f, n: 0 }).n++;
+    }));
+    const top = Object.values(compte).sort((a, b) => b.n - a.n).slice(0, 6);
+    $("cuesta").innerHTML = top.length
+      ? top.map(({ f, n }) => `<li><span>${echap(etiquetteFallo(f))}</span><small>${echap(LECONS[f.leccion]?.court || "")} · ${n} ${n > 1 ? "sesiones" : "sesión"}</small></li>`).join("")
+      : `<li class="rien">Nada en estas dos semanas.</li>`;
+    const p = S[0].pendientes;
+    $("repasoInfo").textContent = p
+      ? `Ese día, la app propone un repaso con lo que le costó (ahora: ${p} ${p > 1 ? "cosas" : "cosa"} por repasar).`
+      : "Ese día, si hay cosas que le costaron, la app propone un repaso que las mezcla. Ahora no hay nada por repasar.";
+  }
+
+  async function charger() {
+    // Les réglages : d'abord la copie du téléphone (et ce qui n'est pas encore parti), puis ceux du Sheet.
+    A = { ...(Sync.ajustes() || {}), ...lireLocal(PENDIENTE, {}) };
+    afficherReglages();
+    etat("attente", "Sincronizando…");
+    try {
+      const [a, s] = await Promise.all([Sync.rafraichirAjustes(), Sync.sesiones()]);
+      A = { ...a, ...lireLocal(PENDIENTE, {}) };
+      S = s || [];
+      afficherReglages(); afficherSesiones();
+      if (lireLocal(PENDIENTE, null)) envoyer();
+      else etat("ok", "Al día · " + heure(new Date()));
+    } catch (err) {
+      afficherSesiones();
+      etat("erreur", "Sin conexión: datos de " + (A.recu ? dateLongue(A.recu) + " " + heure(A.recu) : "antes"), false);
+    }
+  }
+  $("actualiser").addEventListener("click", charger);
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && !$("contenu").hidden) charger(); });
+
+  // ---------- Entrée : lien, puis code ----------
+  $("okLien").addEventListener("click", async () => {
+    $("msgLien").textContent = "";
+    $("okLien").disabled = true;
+    try { A = await Sync.brancher($("champLien").value); $("champLien").value = ""; demanderCode(); }
+    catch (err) { $("msgLien").textContent = "No se pudo conectar: " + err.message + "."; }
+    $("okLien").disabled = false;
+  });
+
+  let mode = "taper", premier = "";
+  function demanderCode(m) {
+    const a = Sync.ajustes() || {};
+    mode = m || (a.codigo ? "taper" : "choisir");
+    premier = "";
+    $("titreCode").textContent = mode === "taper" ? "Código de papás" : "Elige un código";
+    $("texteCode").textContent = mode === "taper" ? "Escribe el código de 4 cifras." : "Elige un código de 4 cifras para papá y mamá. Dorian no debe saberlo.";
+    $("oubli").hidden = mode !== "taper";
+    $("champCode").value = ""; $("msgCode").textContent = "";
+    montrer("ecranCode");
+    $("champCode").focus();
+  }
+  $("champCode").addEventListener("input", async (ev) => {
+    const v = ev.target.value.replace(/\D/g, "").slice(0, 4);
+    ev.target.value = v;
+    if (v.length < 4) return;
+    if (mode === "taper") {
+      // Le code peut avoir changé sur l'autre téléphone : on relit les réglages si on a du réseau.
+      let a = Sync.ajustes() || {};
+      if (a.codigo !== empreinte(v)) a = (await Sync.rafraichirAjustes().catch(() => null)) || a;
+      if (a.codigo === empreinte(v)) { sessionStorage.setItem(OUVERT, "1"); ouvrir(); }
+      else { $("msgCode").textContent = "Ese no es el código."; ev.target.value = ""; }
+      return;
+    }
+    if (!premier) { premier = v; ev.target.value = ""; $("texteCode").textContent = "Escríbelo otra vez para confirmar."; return; }
+    if (v !== premier) { premier = ""; ev.target.value = ""; $("texteCode").textContent = "No coinciden. Elige un código de 4 cifras."; return; }
+    try {
+      A = await Sync.guardarAjustes({ codigo: empreinte(v) });
+      sessionStorage.setItem(OUVERT, "1");
+      ouvrir();
+      etat("ok", "Código guardado");
+    } catch (err) { $("msgCode").textContent = "No se pudo guardar el código (" + err.message + "). Prueba con conexión."; premier = ""; ev.target.value = ""; }
+  });
+  // Code oublié : celui qui a le lien du script (avec sa clé) peut en choisir un nouveau.
+  $("oubli").addEventListener("click", () => {
+    const t = prompt("Para elegir un código nuevo, pega otra vez el enlace del script (…/exec#clave):");
+    if (!t) return;
+    try { if (Sync.lireLien(t).cle !== Sync.lien()?.cle) throw new Error(); demanderCode("choisir"); }
+    catch { $("msgCode").textContent = "Ese enlace no es el de este teléfono."; }
+  });
+  $("changerCode").addEventListener("click", () => demanderCode("choisir"));
+  $("verrouiller").addEventListener("click", () => { sessionStorage.removeItem(OUVERT); demanderCode(); });
+  $("deconnecter").addEventListener("click", () => {
+    if (!confirm("¿Desconectar este teléfono? Habrá que pegar otra vez el enlace del script.")) return;
+    Sync.debrancher(); sessionStorage.removeItem(OUVERT); montrer("ecranLien");
+  });
+
+  function ouvrir() { montrer("contenu"); charger(); }
+
+  if (!Sync.lien()) montrer("ecranLien");
+  else if (sessionStorage.getItem(OUVERT)) ouvrir();
+  else demanderCode();
+</script>
+</body>
+</html>

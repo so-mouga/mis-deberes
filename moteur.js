@@ -1,7 +1,7 @@
 // Moteur de séance : lit une leçon (lecons.js) et enchaîne ses étapes.
 const $ = (id) => document.getElementById(id);
 const scene = $("scene");
-const ID = new URLSearchParams(location.search).get("lecon") || LECON_DU_JOUR;
+const ID = LECONS[new URLSearchParams(location.search).get("lecon")] ? new URLSearchParams(location.search).get("lecon") : Deberes.leconDuJour().id;
 const L = LECONS[ID];
 const LANGUE = L.langue;
 document.title = "Deberes · " + L.titre;
@@ -9,10 +9,9 @@ $("pause").innerHTML = ICONES.pause;
 $("redire").innerHTML = ICONES.hautparleur;
 $("finBandeau").textContent = L.titre;
 
-const ICONE = { descubre: "oeil", toca: "oreille", elige: "question", vrai: "ok", letras: "lettres", papa: "duo", cuaderno: "crayon", fin: "etoile" };
-const FAIRE = { descubre, toca, elige, vrai, letras, papa, cuaderno };
+const FAIRE = { descubre, toca, elige, vrai, letras, papa, cuaderno, palitos, problema };
 const ETAPES = [...L.etapes, { type: "fin" }];
-$("chemin").innerHTML = ETAPES.map((e) => `<span class="case">${ICONES[ICONE[e.type]]}</span>`).join("");
+$("chemin").innerHTML = ETAPES.map((e) => `<span class="case" role="img" aria-label="${Deberes.nomEtape(e)}" title="${Deberes.nomEtape(e)}">${ICONES[Deberes.ICONE[e.type]]}</span>`).join("");
 const cases = [...$("chemin").children];
 const parle = (t, v = .8) => dire(t, LANGUE, v);
 
@@ -28,6 +27,9 @@ $("redire").addEventListener("click", () => redire());
 function vider() { scene.innerHTML = ""; scene.classList.remove("entre"); void scene.offsetWidth; scene.classList.add("entre"); }
 function bouton(texte, classe = "") { const b = document.createElement("button"); b.className = "gros " + classe; b.textContent = texte; return b; }
 const clic = (el) => new Promise((ok) => el.addEventListener("click", ok, { once: true }));
+
+// Note un point raté dans le journal de la séance (deberes.js). « e.origen » : la leçon d'origine, pour le Repaso.
+const rate = (e, tipo, clave, txt) => Deberes.erreur((e && e.origen) || ID, tipo, clave, txt);
 
 // Montre la bonne réponse sans punir : rien ne change sur le choix raté, la bonne se soulève.
 function montrer(bonne) {
@@ -77,7 +79,7 @@ async function toca(e) {
     await new Promise((fini) => cartes.forEach((b) => b.addEventListener("click", async () => {
       if (b === bonne) { b.classList.add("bonne"); sonBien(); await parle(cible.voz); await attendre(400); fini(); }
       else {
-        erreurs++; montrer(bonne);
+        erreurs++; montrer(bonne); rate(e, "mot", cible.voz);
         if (erreurs >= 2) cartes.filter((c) => c !== bonne && c !== b).forEach((c) => (c.style.visibility = "hidden"));
         parle(cible.voz);
       }
@@ -133,7 +135,7 @@ async function elige(e) {
         speechSynthesis.cancel(); b.classList.add("bonne"); sonBien();
         const vide = scene.querySelector(".wagon.vide"); if (vide) { vide.classList.remove("vide"); vide.textContent = q.bonne; }
         await parle(q.bonne); await attendre(400); fini();
-      } else { montrer(bonne); parle(q.bonne); }
+      } else { montrer(bonne); parle(q.bonne); rate(e, "mot", q.bonne); }
     })));
   }
 }
@@ -157,7 +159,7 @@ async function vrai(e) {
         await direSuite(q.vrai ? [["Yes!", LANGUE], [q.phrase, LANGUE, .8]] : [["No.", LANGUE], [q.phrase, LANGUE, .8], [q.correction, LANGUE, .8]]);
         await attendre(300); fini();
       } else {
-        montrer(bonne);
+        montrer(bonne); rate(e, "frase", q.phrase);
         direSuite([["Mira bien dónde está mamá.", "es-ES"], [q.vrai ? q.phrase : q.correction, LANGUE, .8]]);
       }
     })));
@@ -195,40 +197,75 @@ async function letras(e) {
         if (n < trous.length) trous[n].classList.add("suivant");
         else { sonBien(); await parle(m.mot); await attendre(500); fini(); }
       } else {
-        b.classList.add("non"); setTimeout(() => b.classList.remove("non"), 900);
+        b.classList.add("non"); rate(e, "mot", m.mot); setTimeout(() => b.classList.remove("non"), 900);
         parle(m.mot, .6);
       }
     })));
   }
 }
 
-// ---------- Con papá o mamá ----------
+// ---------- Con un mayor ----------
+// Pensée pour l'adulte qui en sait le moins : la grand-mère de Dorian ne parle ni français ni anglais.
+// La voix lit la question ; l'adulte écoute la réponse au haut-parleur et compare, à l'oreille, avec ce que dit Dorian.
+const AIDE_MAYOR = "Pregúntale a Dorian. Luego toca el altavoz y escucha la respuesta. ¿Ha dicho lo mismo?";
+const langueDe = (t) => (/^\s*[¿¡]/.test(t) || LANGUE === "es-ES" ? "es-ES" : LANGUE);
+
+// La première fois sur ce téléphone : un écran qui explique la séance à l'adulte qui aide.
+async function premiereFoisMayor() {
+  const CLE = "dorian.mayor.visto";
+  try { if (localStorage.getItem(CLE) && !PARAMS.has("mayor")) return; } catch {}
+  if (DEMO && !PARAMS.has("mayor")) return;
+  const v = $("voileMayor");
+  v.querySelector(".icone-pause").innerHTML = ICONES.pause;
+  v.hidden = false;
+  direSuite([["Para el adulto que ayuda.", "es-ES"], ...[...v.querySelectorAll("li")].map((li) => [li.textContent, "es-ES"])]);
+  await clic($("entendido"));
+  speechSynthesis.cancel(); sonTouche();
+  v.hidden = true;
+  try { localStorage.setItem(CLE, "1"); } catch {}
+}
+
 async function papa(e) {
+  await premiereFoisMayor();
   const qs = [...e.questions];
+  let premiere = true;
   while (qs.length) {
     const item = qs.shift();
     vider();
     const carte = document.createElement("div"); carte.className = "carte-parent";
-    carte.innerHTML = `<p class="q">${item.q}</p>${item.item ? cromo(item.item, { nom: false }).outerHTML : ""}
-      <div class="reponse"><span>Respuesta<br><b>${item.r}</b></span><button class="rond" aria-label="Escuchar la respuesta">${ICONES.hautparleur}</button></div>`;
+    carte.innerHTML = `<p class="pour-mayor">${AIDE_MAYOR}</p><p class="q">${item.q}</p>${item.item ? cromo(item.item, { nom: false }).outerHTML : ""}
+      <div class="reponse"><span>Respuesta<br><b>${item.r}</b></span><button class="ecoute" aria-label="Escuchar la respuesta">${ICONES.hautparleur}<span>Escuchar</span></button></div>`;
     const boutons = document.createElement("div"); boutons.className = "boutons";
-    const oui = bouton("¡Bien dicho!", "vert"); oui.insertAdjacentHTML("afterbegin", ICONES.ok);
+    const oui = bouton("Sí, lo ha dicho", "vert"); oui.insertAdjacentHTML("afterbegin", ICONES.ok);
     const encore = bouton("Otra vez", "clair"); encore.insertAdjacentHTML("afterbegin", ICONES.encore);
     boutons.append(oui, encore);
     scene.append(carte, boutons);
-    carte.querySelector(".reponse .rond").addEventListener("click", () => parle(item.r.replace(/…|\(.*?\)|\+/g, "")));
-    consigne("Con papá o mamá", () => dire("Papá o mamá te pregunta. " + item.q));
+    carte.querySelector(".ecoute").addEventListener("click", () => { speechSynthesis.cancel(); parle(item.r.replace(/…|\(.*?\)|\+/g, "")); });
+    // La consigne pour l'adulte est dite à la première question (et toujours avec le bouton « escuchar otra vez »).
+    const question = [item.q, langueDe(item.q), .85];
+    $("texte").textContent = "Con un mayor";
+    redire = () => direSuite([[AIDE_MAYOR, "es-ES"], question]);
+    if (premiere) redire(); else direSuite([question]);
+    premiere = false;
     const choisi = await Promise.race([clic(oui).then(() => "oui"), clic(encore).then(() => "encore")]);
+    speechSynthesis.cancel();
     if (choisi === "oui") { sonBien(); await attendre(500); }
-    else { item.repasse = (item.repasse || 0) + 1; if (item.repasse < 2) qs.push(item); await dire("Vale, luego otra vez."); }
+    else { rate(e, "papa", item.q + " · " + item.r, item.q); item.repasse = (item.repasse || 0) + 1; if (item.repasse < 2) qs.push(item); await dire("Vale, luego otra vez."); }
   }
 }
 
 // ---------- En tu cuaderno ----------
 async function cuaderno(e) {
   vider();
-  const cahier = document.createElement("div"); cahier.className = "cahier" + (e.items.length > 4 ? " trois" : "");
-  e.items.forEach((it) => cahier.append(cromo(it)));
+  let cahier;
+  if (e.items.every((it) => !it.img)) {
+    // Que des mots : une liste sur les lignes du cahier, à recopier.
+    cahier = document.createElement("ol"); cahier.className = "lignes";
+    e.items.forEach((it) => { const li = document.createElement("li"); li.textContent = it.nom; li.addEventListener("click", () => parle(it.nom)); cahier.append(li); });
+  } else {
+    cahier = document.createElement("div"); cahier.className = "cahier" + (e.items.length > 4 ? " trois" : "");
+    e.items.forEach((it) => cahier.append(cromo(it)));
+  }
   const note = document.createElement("p"); note.className = "note"; note.textContent = "Despacio y con letra bonita.";
   const fait = bouton("¡Hecho!", "vert"); fait.insertAdjacentHTML("afterbegin", ICONES.ok); fait.style.marginTop = "auto";
   scene.append(cahier, note, fait);
@@ -238,41 +275,78 @@ async function cuaderno(e) {
 
 // ---------- Fin : les cromos se collent, puis la pause ----------
 async function fin() {
-  $("voileFin").hidden = false;
-  const page = $("finPage");
-  page.classList.toggle("six", L.cromos.length > 4);
-  page.innerHTML = L.cromos.map((m, i) => `<div class="hueco">${i + 1}</div>`).join("");
-  dire("¡Muy bien, Dorian! Mira tus cromos.");
-  await attendre(900);
-  for (const [i, c] of L.cromos.entries()) {
-    const el = cromo(c); el.classList.add("colle");
-    page.children[i].replaceWith(el); sonPegar();
-    await attendre(700);
+  Deberes.terminer(); // la séance part vers le suivi (ou en file d'attente), avant le sobre
+  const v = $("voileFin");
+  v.hidden = false;
+  const a = tirerAnimal();
+  if (!a) {
+    v.innerHTML = `<h2>¡Álbum completo!</h2><p>Tienes los ${ANIMAUX.length} animales. ¡Eres un campeón!</p>`;
+    await dire("¡Muy bien, Dorian! ¡Tu álbum de animales está completo!");
+    await attendre(1500); return descanso();
   }
-  $("finTitre").textContent = `¡${L.cromos.length} cromos nuevos!`;
-  await dire(`¡${L.cromos.length} cromos nuevos!`);
-  await attendre(800);
+  // 1. Le paquet fermé
+  v.innerHTML = `<h2>¡Muy bien, Dorian!</h2><p>Has terminado los deberes. Toca tu sobre para abrirlo.</p>
+    <button class="sobre${a.oro ? " oro" : ""}" id="sobre" aria-label="Abrir el sobre"><span class="rabat"></span><span class="etoile">${ICONES.etoile}</span></button>`;
+  dire("¡Muy bien, Dorian! Has terminado. Toca tu sobre para abrirlo.");
+  await clic($("sobre"));
+  speechSynthesis.cancel();
+  $("sobre").classList.add("ouvre"); sonPegar();
+  await attendre(700);
+  // 2. L'animal
+  const carte = cromoAnimal(a); carte.classList.add("revele");
+  v.innerHTML = "";
+  const titre = document.createElement("h2"); titre.textContent = a.oro ? "¡Cromo dorado!" : "¡Cromo nuevo!";
+  const noms = document.createElement("p"); noms.className = "langues"; noms.textContent = `${a.en} · ${a.fr}`;
+  const dato = document.createElement("p"); dato.className = "dato"; dato.textContent = a.dato;
+  const ok = bouton("¡A mi álbum!");
+  v.append(titre, carte, noms, dato, ok);
+  sonBien();
+  await direSuite([[a.oro ? "¡Un cromo dorado!" : "¡Un cromo nuevo!", "es-ES"], [a.es + ".", "es-ES"], [a.dato, "es-ES"]]);
+  carte.addEventListener("click", () => dire(a.dato));
+  await clic(ok);
+  garder(a.n); sonTouche();
   descanso();
 }
 
 function descanso() {
   const v = $("voileFin");
   v.innerHTML = `<div class="horloge"><svg viewBox="0 0 150 150"><circle cx="75" cy="75" r="68" stroke="rgba(255,255,255,.15)"/><circle id="arc" cx="75" cy="75" r="68" stroke="#F2B90F" stroke-linecap="round" stroke-dasharray="427" stroke-dashoffset="0"/></svg><span id="reste">5:00</span></div>
-    <h2>¡Descanso!</h2><p>Levántate, bebe agua, muévete un poco. Te aviso cuando acabe.</p><a class="gros clair" href="index.html">Ver mi álbum</a>`;
-  dire("¡Descanso! Cinco minutos. Levántate y muévete un poco. Te aviso cuando acabe.");
+    <h2>¡Descanso!</h2><p>Ahora: 5 minutos de tu juego, o salta y muévete un poco. Te aviso cuando acabe.</p><a class="gros clair" href="album-animales.html">Ver mis animales</a>`;
+  dire("¡Descanso! Ahora tienes cinco minutos para tu juego. Te aviso cuando acabe.");
+  // Une 2e séance, seulement proposée (jamais une 3e) : à la fin du minuteur, ou plus tôt avec « Ya he descansado ».
+  const propo = Deberes.deuxiemeSeance(ID);
+  let tic;
+  if (propo) {
+    const b = bouton("Ya he descansado", "clair");
+    b.addEventListener("click", () => { clearInterval(tic); proposer(propo); });
+    v.append(b);
+  }
   const debut = Date.now(), total = 5 * 60 * 1000;
-  const tic = setInterval(() => {
+  tic = setInterval(() => {
     const r = Math.max(0, total - (Date.now() - debut)), s = Math.ceil(r / 1000);
     $("reste").textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
     $("arc").style.strokeDashoffset = 427 * (1 - r / total);
-    if (!r) { clearInterval(tic); sonBien(); dire("¡Fin del descanso! ¿Seguimos?"); }
+    if (!r) {
+      clearInterval(tic); sonBien();
+      if (propo) proposer(propo); else dire("¡Fin del descanso! Deja el juego, ¿seguimos?");
+    }
   }, 500);
+}
+
+// « ¿Hacemos también el inglés hoy? » : Dorian peut toujours dire non, sans rien perdre.
+function proposer(p) {
+  const v = $("voileFin");
+  v.innerHTML = `<h2>¡Muy bien, Dorian!</h2><p>Has terminado ${Deberes.matiere(ID)}. Tu descanso ha acabado.</p>
+    <p class="propo">${p.question}<br><span>${p.raison}</span></p>
+    <a class="gros" href="seance.html?lecon=${p.id}">${p.oui}</a><a class="gros clair" href="index.html">No, hoy ya está</a>`;
+  direSuite([["¡Muy bien, Dorian! Tu descanso ha acabado.", "es-ES"], [p.question, "es-ES"], [p.raison, "es-ES"]]);
 }
 
 // ---------- Pause demandée par Dorian ----------
 let souffleTic;
 $("pause").addEventListener("click", () => {
   speechSynthesis.cancel();
+  Deberes.pause();
   $("voilePause").hidden = false;
   dire("Vale. Una pausa. Respira conmigo.");
   let dedans = true; $("souffle").textContent = "Inhala";
@@ -281,13 +355,27 @@ $("pause").addEventListener("click", () => {
 $("seguir").addEventListener("click", () => { clearInterval(souffleTic); $("voilePause").hidden = true; redire(); });
 
 // ---------- Déroulé ----------
+// Mode démo (pour les captures) : ?demo&etape=N ouvre directement l'étape N, sans voix.
+const PARAMS = new URLSearchParams(location.search);
+const DEMO = PARAMS.has("demo");
+// En démo, rien n'est enregistré, sauf avec « &registro » (pour tester le suivi).
+const REGISTRAR = !DEMO || PARAMS.has("registro");
+Deberes.recuperer(); // une séance d'avant restée inachevée part dans la file
+Sync.vider();
+if (DEMO) { window.dire = async () => {}; demoFaite = true; if (PARAMS.has("pause")) setTimeout(() => $("pause").click(), 300); }
+
 (async () => {
   vider();
-  const go = bouton("¡Empezamos!"); go.style.marginTop = "auto";
-  scene.append(go);
-  $("texte").textContent = "Hoy: " + L.sujet;
-  await clic(go); sonTouche(); // le premier toucher autorise la voix
+  const depart = DEMO ? +PARAMS.get("etape") || 0 : 0;
+  if (!DEMO) {
+    const go = bouton("¡Empezamos!"); go.style.marginTop = "auto";
+    scene.append(go);
+    $("texte").textContent = "Hoy: " + L.sujet;
+    await clic(go); sonTouche(); // le premier toucher autorise la voix
+  }
+  if (REGISTRAR) Deberes.commencer(ID);
   for (const [i, e] of ETAPES.entries()) {
+    if (i < depart) continue;
     cases.forEach((c, j) => { c.classList.toggle("faite", j < i); c.classList.toggle("ici", j === i); });
     if (e.type === "fin") await fin(); else await FAIRE[e.type](e);
   }

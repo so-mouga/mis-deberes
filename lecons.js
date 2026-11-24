@@ -8,6 +8,8 @@ const NOMBRES_FR = ["", "un", "deux", "trois", "quatre", "cinq", "six", "sept", 
   "vingt-huit", "vingt-neuf", "trente", "trente et un"];
 const MOIS_FR = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
 const MESES_ES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+const JOURS_FR = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"];
+const DIAS_ES = ["el lunes", "el martes", "el miércoles", "el jueves", "el viernes", "el sábado", "el domingo"];
 const nombre = (n) => ({ texte: String(n), nom: NOMBRES_FR[n], voz: NOMBRES_FR[n] });
 
 const LECONS = {
@@ -106,6 +108,43 @@ const LECONS = {
     ],
   },
 
+  "fr-semana": {
+    titre: "Francés · Los días de la semana",
+    court: "Francés · días",
+    sujet: "Los días de la semana",
+    langue: "fr-FR",
+    cromos: [],
+    etapes: [
+      { type: "descubre", consigne: "Los siete días", items: JOURS_FR.map((j, i) => ({ texte: j, nom: j, es: DIAS_ES[i], voz: j })) },
+      { type: "toca", consigne: "Escucha y toca el día", n: 5, items: JOURS_FR.map((j) => ({ texte: j, voz: j })) },
+      { type: "elige", consigne: "El tren de los días", questions: [1, 3, 4, 6].map((i) => ({
+        wagons: JOURS_FR.slice(i - 2 < 0 ? 0 : i - 2, i),
+        q: `Después de ${JOURS_FR[i - 1]}, ¿qué día viene?`,
+        dire: [["Después de", "es-ES"], [JOURS_FR[i - 1], "fr-FR", .8], ["¿qué día viene?", "es-ES"]],
+        bonne: JOURS_FR[i],
+        autres: [JOURS_FR[(i + 2) % 7], JOURS_FR[(i + 4) % 7]],
+      })) },
+      { type: "elige", consigne: "¿Cómo se dice en francés?", questions: [
+        { q: "¿Cómo se dice «miércoles»?", bonne: "mercredi", autres: ["mardi", "vendredi"] },
+        { q: "¿Cómo se dice «viernes»?", bonne: "vendredi", autres: ["mercredi", "samedi"] },
+        { q: "¿Cómo se dice «domingo»?", bonne: "dimanche", autres: ["lundi", "jeudi"] },
+      ] },
+      { type: "letras", consigne: "Completa la palabra", mots: [
+        { item: { texte: "jueves" }, mot: "jeudi", trous: "j_ud_" },
+        { item: { texte: "sábado" }, mot: "samedi", trous: "s_m_di" },
+        { item: { texte: "domingo" }, mot: "dimanche", trous: "dim_nch_" },
+      ] },
+      { type: "papa", questions: [
+        { q: "Di los días de la semana en francés, en orden.", r: "lundi, mardi, mercredi, jeudi, vendredi, samedi, dimanche" },
+        { q: "¿Qué día es hoy? Dilo en francés.", r: "aujourd'hui, c'est … (el día de hoy)" },
+        { q: "¿Qué días no hay cole? En francés.", r: "samedi et dimanche" },
+        { q: "¿Cómo se dice «lunes» en francés?", r: "lundi" },
+      ] },
+      { type: "cuaderno", consigne: "Escribe en tu cuaderno", voz: "Escribe los siete días de la semana en francés, en orden. Despacio, con letra bonita.",
+        items: JOURS_FR.map((j) => ({ texte: j, nom: j })) },
+    ],
+  },
+
   "en-casa": {
     titre: "Inglés · La casa",
     court: "Inglés",
@@ -140,4 +179,4 @@ const LECONS = {
     ],
   },
 };
-const LECON_DU_JOUR = "en-examen"; // jusqu'à l'examen du jeudi 26 nov., puis "fr-calendario"
+// La séance du jour n'est plus écrite ici : elle est choisie par deberes.js, selon les réglages des parents.

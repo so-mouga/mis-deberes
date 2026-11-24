@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#2347A8">
 <title>Deberes · La casa</title>
 <link rel="preload" href="assets/fonts/lexend-latin.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="style.css?v=5">
+<link rel="stylesheet" href="style.css?v=10">
 <style>
   header{display:flex;align-items:center;gap:12px}
   header .chemin{flex:1}
@@ -55,13 +55,24 @@
   .tuile.non{opacity:.45}
   .tuile.partie{visibility:hidden}
 
-  /* Avec papa ou maman */
+  /* Con un mayor : pour l'adulte qui en sait le moins (il compare à l'oreille) */
   .carte-parent{background:#fff;color:var(--marine);border-radius:22px;padding:18px;display:flex;flex-direction:column;gap:14px;box-shadow:0 8px 18px rgba(0,0,0,.3)}
   .carte-parent .q{font-size:27px;font-weight:850;line-height:1.2;text-align:center}
-  .carte-parent .cromo{width:170px;align-self:center;box-shadow:none;border:2px solid #DCE4F5}
+  .carte-parent .pour-mayor{font-size:17px;font-weight:600;line-height:1.35;color:#55617A;background:#FFF6D6;border-radius:12px;padding:8px 12px;text-align:center}
+  .carte-parent .cromo{width:140px;align-self:center;box-shadow:none;border:2px solid #DCE4F5}
   .reponse{display:flex;align-items:center;justify-content:space-between;gap:10px;border-top:2px dashed #DCE4F5;padding-top:12px;font-size:18px;font-weight:600;color:#55617A}
   .reponse b{font-size:24px;color:var(--marine)}
-  .reponse .rond{width:48px;height:48px;background:var(--ciel);color:var(--marine);box-shadow:none}
+  .reponse .ecoute{flex:none;display:flex;align-items:center;gap:8px;min-height:64px;padding:0 20px 0 16px;border-radius:32px;background:var(--jaune);color:var(--marine);
+    font-size:21px;font-weight:850;box-shadow:0 5px 0 var(--jaune-f);transition:transform .2s var(--ease)}
+  .reponse .ecoute:active{transform:translateY(3px)}
+  .reponse .ecoute svg{width:32px;height:32px}
+  .consejos{list-style:none;display:flex;flex-direction:column;gap:14px;max-width:340px;text-align:left}
+  .consejos li{position:relative;padding-left:24px;font-size:20px;font-weight:600;line-height:1.4;color:#fff}
+  .consejos li::before{content:"";position:absolute;left:0;top:9px;width:12px;height:12px;border-radius:50%;background:var(--jaune)}
+  .icone-pause{display:inline-grid;place-items:center;width:30px;height:30px;border-radius:50%;background:var(--jaune);color:var(--marine);vertical-align:-7px}
+  .icone-pause svg{width:18px;height:18px}
+  .propo{color:#fff!important;font-weight:800!important;font-size:23px!important}
+  .propo span{display:block;font-weight:600;color:var(--encre-douce);font-size:20px;margin-top:4px}
   .boutons{display:flex;flex-direction:column;gap:14px;margin-top:auto}
 
   /* Cahier */
@@ -82,9 +93,60 @@
   .wagon::before{left:14px}.wagon::after{right:14px}
   .wagon.vide{background:transparent;border:3px dashed var(--jaune);color:var(--jaune);font-size:30px}
   .question{font-size:25px;font-weight:850;text-align:center;line-height:1.2;margin-top:6px}
+  .lignes{list-style:none;background:#fff;color:var(--marine);border-radius:18px;padding:10px 20px;counter-reset:n}
+  .lignes li{counter-increment:n;display:flex;align-items:baseline;gap:14px;font-size:28px;font-weight:800;padding:6px 0;border-bottom:2px solid #DCE4F5}
+  .lignes li:last-child{border-bottom:0}
+  .lignes li::before{content:counter(n);font-size:17px;font-weight:700;color:#8A97B5;min-width:16px}
+  .cahier > *{min-width:0}
   .cahier.trois{grid-template-columns:1fr 1fr 1fr}
   .cahier.trois .cromo b{font-size:17px}
   .cahier.trois .cromo .txt{font-size:36px}
+
+  /* Sobre */
+  .sobre{position:relative;width:200px;height:250px;border-radius:14px;background:linear-gradient(135deg,var(--rouge) 0 50%,var(--jaune) 50%);
+    box-shadow:0 10px 0 rgba(0,0,0,.25),0 18px 30px rgba(0,0,0,.35);display:grid;place-items:center;animation:attire 2.4s ease-in-out infinite}
+  .sobre.oro{background:linear-gradient(135deg,#F7D774,#E0A800 45%,#FFE9A3 55%,#C98F00)}
+  .sobre .rabat{position:absolute;top:0;left:0;right:0;height:46px;border-radius:14px 14px 0 0;background:rgba(0,0,0,.16);
+    clip-path:polygon(0 0,100% 0,100% 70%,90% 100%,80% 70%,70% 100%,60% 70%,50% 100%,40% 70%,30% 100%,20% 70%,10% 100%,0 70%);transition:transform .6s var(--ease),opacity .6s}
+  .sobre .etoile{width:84px;height:84px;color:#fff}
+  .sobre .etoile svg{width:100%;height:100%}
+  .sobre.ouvre{animation:none}
+  .sobre.ouvre .rabat{transform:translateY(-80px) rotate(-12deg);opacity:0}
+  @keyframes attire{50%{transform:rotate(-3deg) scale(1.03)}}
+  .cromo.revele{width:min(250px,66vw);animation:revele .9s var(--ease) both}
+  .cromo.revele b{font-size:24px}
+  @keyframes revele{from{transform:rotateY(180deg) scale(.5);opacity:0}}
+  .langues{font-size:18px!important;font-weight:700!important}
+  .dato{font-size:21px!important;color:#fff!important;font-weight:700!important;max-width:28ch!important;line-height:1.3}
+
+  /* Maths */
+  .zone-palitos{min-height:110px;display:grid;place-items:center;background:#fff;border-radius:18px;padding:14px;margin-top:6px}
+  .zone-palitos svg{max-width:100%;height:auto}
+  .compte-palitos{text-align:center;font-size:22px;font-weight:800}
+  .touches-palitos{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .tp{min-height:56px;border-radius:16px;background:var(--page-fonce);color:#fff;font-size:21px;font-weight:800;box-shadow:0 4px 0 var(--page-ombre)}
+  .tp:active{transform:translateY(3px)}
+  .probleme{background:#fff;color:var(--marine);border-radius:18px;padding:16px;font-size:23px;font-weight:600;line-height:1.55}
+  .probleme .seg{display:inline;font:inherit;color:inherit;padding:1px 2px;-webkit-box-decoration-break:clone;box-decoration-break:clone;border-radius:6px;text-align:left;transition:background .25s,color .25s,box-shadow .25s}
+  .probleme .seg.lu{background:#FFF1BF}
+  .probleme .seg.rouge{color:var(--rouge);font-weight:800;box-shadow:inset 0 -3px 0 var(--rouge)}
+  .probleme .seg.bleu{color:#2457C9;font-weight:800;box-shadow:inset 0 -3px 0 #2457C9}
+  .probleme .seg.montre{background:#FFF1BF;animation:releve 1.2s var(--ease) 2}
+  .mots.deux{flex-direction:row}
+  .mots.deux .mot{flex:1}
+  .colonnes{align-self:center;display:grid;grid-template-columns:40px 64px 64px;gap:6px;background:#fff;color:var(--marine);border-radius:18px;padding:14px 18px;
+    font-size:40px;font-weight:850;text-align:center;font-variant-numeric:tabular-nums;margin-top:8px}
+  .colonnes .tete{font-size:18px;color:#8A97B5}
+  .colonnes .signe{text-align:right}
+  .colonnes .res{border-top:4px solid var(--marine);height:62px;display:grid;place-items:center}
+  .colonnes .res.suivant{background:#FFF1BF;border-radius:0 0 10px 10px}
+  .colonnes .res.rempli{color:var(--vert);animation:pose .35s var(--ease)}
+  .aide-palitos{min-height:70px;display:grid;place-items:center}
+  .aide-palitos svg{background:#fff;border-radius:12px;padding:6px}
+  .pave{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:auto}
+  .pave button{height:62px;border-radius:14px;background:var(--jaune);color:var(--marine);font-size:30px;font-weight:850;box-shadow:0 5px 0 var(--jaune-f)}
+  .pave button:active{transform:translateY(3px)}
+  .trou-sol{display:inline-block;min-width:54px;border-bottom:4px solid var(--jaune);color:var(--jaune)}
 
   /* Voiles */
   .voile{position:fixed;inset:0;z-index:30;background:var(--page);background-image:radial-gradient(rgba(255,255,255,.06) 1.5px,transparent 1.6px);background-size:18px 18px;
@@ -126,6 +188,16 @@
   <button class="gros" id="seguir">Seguir</button>
 </section>
 
+<section class="voile" id="voileMayor" hidden>
+  <h2>Para el adulto que ayuda</h2>
+  <ul class="consejos">
+    <li>La voz lo explica todo: solo hay que escuchar.</li>
+    <li>En el cuaderno, cuando Dorian ha escrito, toca «¡Hecho!».</li>
+    <li>Si Dorian se agobia, hay un botón de pausa arriba <span class="icone-pause" aria-hidden="true"></span>.</li>
+  </ul>
+  <button class="gros" id="entendido">Entendido</button>
+</section>
+
 <section class="voile" id="voileFin" hidden>
   <span class="bandeau" id="finBandeau"></span>
   <div id="finPage"></div>
@@ -133,8 +205,12 @@
   <a class="gros" id="finBouton" href="index.html" hidden>Ver mi álbum</a>
 </section>
 
-<script src="commun.js?v=5"></script>
-<script src="lecons.js?v=5"></script>
-<script src="moteur.js?v=5"></script>
+<script src="commun.js?v=10"></script>
+<script src="lecons.js?v=11"></script>
+<script src="maths.js?v=14"></script>
+<script src="animaux.js?v=10"></script>
+<script src="sync.js?v=1"></script>
+<script src="deberes.js?v=2"></script>
+<script src="moteur.js?v=12"></script>
 </body>
 </html>

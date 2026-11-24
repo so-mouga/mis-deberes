@@ -51,6 +51,8 @@ const ICONES = {
   etoile: `<svg viewBox="0 0 24 24" ${T}><path d="m12 3.5 2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.8-5.2 2.8 1-5.8-4.3-4.1 5.9-.9z" fill="currentColor"/></svg>`,
   lune: `<svg viewBox="0 0 24 24" ${T}><path d="M19 14.5A7.5 7.5 0 1 1 9.5 5a6 6 0 0 0 9.5 9.5z"/></svg>`,
   croix: `<svg viewBox="0 0 24 24" ${T}><path d="M6.5 6.5l11 11M17.5 6.5l-11 11" stroke-width="3.2"/></svg>`,
+  palitos: `<svg viewBox="0 0 24 24" ${T}><path d="M6 4v16M10 4v16M14 4v16M18 4v16"/><path d="M4 12h16" stroke-width="3"/></svg>`,
+  calcul: `<svg viewBox="0 0 24 24" ${T}><rect x="4" y="3" width="16" height="18" rx="3"/><path d="M8 8h8M8 12.5h2M12 12.5h0M16 12.5h0M8 16.5h2M14 16.5h2"/></svg>`,
   ok: `<svg viewBox="0 0 24 24" ${T}><path d="m5 12.5 4.5 4.5L19 7.5" stroke-width="3.2"/></svg>`,
   encore: `<svg viewBox="0 0 24 24" ${T}><path d="M4 12a8 8 0 1 0 2.5-5.8"/><path d="M4 4v4.5h4.5"/></svg>`,
   main: `<svg viewBox="0 0 48 48"><path d="M17 26V9a3.5 3.5 0 0 1 7 0v12l1-1a3.4 3.4 0 0 1 5 .5l.5.6a3.3 3.3 0 0 1 4.7.9 3.3 3.3 0 0 1 4.8 2.4V33c0 6.5-4.5 11-11 11h-2c-4 0-6.5-1.6-8.7-4.6L12 33a3.4 3.4 0 0 1 5-4.4z" fill="#fff" stroke="#1E2A44" stroke-width="2.6" stroke-linejoin="round"/></svg>`,

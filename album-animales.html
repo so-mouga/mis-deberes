@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#2347A8">
+<title>Mis animales</title>
+<link rel="preload" href="assets/fonts/lexend-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="style.css?v=10">
+<style>
+  header{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+  h1{flex:1;font-weight:850;font-size:32px;letter-spacing:-.02em}
+  .compte{font-weight:850;font-size:22px;font-variant-numeric:tabular-nums;background:var(--page-fonce);border-radius:20px;padding:6px 14px}
+  section{margin-top:18px}
+  section .bandeau{font-size:20px}
+  .grille{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:12px}
+  .grille .cromo b{font-size:14px}
+  .grille .hueco{font-size:22px}
+  .grille button.cromo{text-align:inherit}
+  .zoom{position:fixed;inset:0;z-index:20;background:rgba(10,20,60,.82);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:24px;text-align:center}
+  .zoom[hidden]{display:none}
+  .zoom .cromo{width:min(260px,70vw)}
+  .zoom .cromo b{font-size:24px}
+  .zoom p{font-size:21px;font-weight:700;max-width:28ch;line-height:1.3}
+  .zoom .langues{font-size:18px;color:var(--encre-douce)}
+  .gros{margin-top:22px}
+</style>
+</head>
+<body>
+<main class="ecran">
+  <header>
+    <a class="rond" href="index.html" aria-label="Volver"></a>
+    <h1>Mis animales</h1>
+    <span class="compte" id="compte"></span>
+  </header>
+  <div id="milieux"></div>
+  <a class="gros clair" href="index.html">Volver a los deberes</a>
+</main>
+
+<div class="zoom" id="zoom" hidden>
+  <div id="zoomCarte"></div>
+  <p class="langues" id="zoomLangues"></p>
+  <p id="zoomDato"></p>
+  <button class="gros" id="fermer">Cerrar</button>
+</div>
+
+<script src="commun.js?v=10"></script>
+<script src="animaux.js?v=10"></script>
+<script>
+  const $ = (id) => document.getElementById(id);
+  if (new URLSearchParams(location.search).has("reset")) localStorage.removeItem(CLE_COLLECTION);
+  document.querySelector("header .rond").innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>`;
+  const a_moi = collection();
+  $("compte").textContent = `${a_moi.length} / ${ANIMAUX.length}`;
+
+  Object.entries(MILIEUX).forEach(([cle, M]) => {
+    const sec = document.createElement("section");
+    sec.innerHTML = `<span class="bandeau" style="background:${M.fond};color:${M.encre};box-shadow:none">${M.nom}</span>`;
+    const grille = document.createElement("div"); grille.className = "grille";
+    ANIMAUX.filter((a) => a.m === cle).forEach((a) => {
+      if (a_moi.includes(a.n)) {
+        const b = document.createElement("button");
+        const c = cromoAnimal(a); b.className = c.className; b.innerHTML = c.innerHTML;
+        b.addEventListener("click", () => ouvrir(a));
+        grille.append(b);
+      } else {
+        const h = document.createElement("div"); h.className = "hueco"; h.textContent = a.n; grille.append(h);
+      }
+    });
+    sec.append(grille); $("milieux").append(sec);
+  });
+
+  function ouvrir(a) {
+    $("zoomCarte").innerHTML = ""; $("zoomCarte").append(cromoAnimal(a));
+    $("zoomLangues").textContent = `${a.en} · ${a.fr}`;
+    $("zoomDato").textContent = a.dato;
+    $("zoom").hidden = false;
+    direSuite([[a.es + ".", "es-ES"], [a.dato, "es-ES"]]);
+  }
+  $("fermer").addEventListener("click", () => { speechSynthesis.cancel(); $("zoom").hidden = true; });
+</script>
+</body>
+</html>

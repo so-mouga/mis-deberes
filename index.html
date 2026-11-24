@@ -6,21 +6,45 @@
 <meta name="theme-color" content="#2347A8">
 <title>Deberes de hoy</title>
 <link rel="preload" href="assets/fonts/lexend-latin.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="style.css?v=5">
+<link rel="stylesheet" href="style.css?v=10">
 <style>
   header{display:flex;align-items:center;gap:12px;margin-bottom:14px}
   h1{flex:1;font-weight:850;font-size:clamp(28px,8.2vw,34px);letter-spacing:-.02em;line-height:1.05}
-  .page{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px}
-  .page.six{grid-template-columns:1fr 1fr 1fr}
-  .page.six .hueco{font-size:26px}
+  .gain{margin-top:16px;display:flex;align-items:center;gap:16px;background:var(--page-fonce);border-radius:20px;padding:14px}
+  .mini-sobre{width:62px;height:78px;flex:none;border-radius:8px;background:linear-gradient(135deg,var(--rouge) 0 50%,var(--jaune) 50%);box-shadow:0 4px 0 rgba(0,0,0,.25)}
+  .gain p{font-size:20px;font-weight:800;line-height:1.35}
+  .gain small{display:block;font-size:16px;font-weight:600;color:var(--encre-douce);margin-top:4px}
+  .animales{margin-top:12px;display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.1);border-radius:20px;padding:12px 14px}
+  .animales b{flex:1;font-size:20px;font-weight:800}
+  .animales b small{display:block;font-size:16px;font-weight:600;color:var(--encre-douce)}
+  .animales .derniers{display:flex}
+  .animales .derniers .cromo{width:52px;padding:3px;margin-left:-14px;border-radius:8px}
+  .animales .derniers .cromo .provisoire{font-size:9px}
   .resume{margin-top:18px;background:var(--page-fonce);border-radius:20px;padding:14px 14px 16px}
-  .resume .case{background:rgba(255,255,255,.12)}
-  .resume p{display:flex;justify-content:space-between;align-items:baseline;font-size:19px;font-weight:600;color:var(--encre-douce);margin-bottom:10px}
-  .resume p b{font-size:21px;font-weight:800;color:#fff}
-  .ensuite{display:flex;gap:10px;margin:16px 0 18px}
-  .ensuite > *{flex:1;border-radius:14px;padding:10px 12px;background:rgba(255,255,255,.08);font-size:17px;font-weight:700;color:var(--encre-douce);line-height:1.25}
+  .resume p{display:flex;justify-content:space-between;align-items:baseline;gap:10px;font-size:19px;font-weight:600;color:var(--encre-douce);margin-bottom:12px}
+  .resume p b{flex:1;font-size:21px;font-weight:800;color:#fff;line-height:1.2}
+  .resume p span{white-space:nowrap}
+  /* Les étapes du jour, nommées et numérotées */
+  .pasos{list-style:none;display:flex;flex-direction:column;gap:8px}
+  .pasos li{display:flex;align-items:center;gap:12px;font-size:19px;font-weight:700;color:#fff}
+  .pasos .num{width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,.14);display:grid;place-items:center;font-size:15px;font-weight:800;flex:none}
+  .pasos svg{width:24px;height:24px;color:var(--encre-douce);flex:none}
+  .pasos li.fin,.pasos li.fin svg{color:var(--jaune)}
+  /* Esta semana : les thèmes cochés par papá y mamá */
+  .semaine{margin-top:12px;background:rgba(255,255,255,.1);border-radius:20px;padding:12px 14px}
+  .semaine b{display:block;font-size:18px;font-weight:800;margin-bottom:8px}
+  .semaine ul{list-style:none;display:flex;flex-direction:column;gap:6px}
+  .semaine li{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:17px;font-weight:700}
+  .semaine li span{flex:none;font-size:15px;font-weight:700;padding:3px 10px;border-radius:12px;background:rgba(255,255,255,.12);color:var(--encre-douce)}
+  .semaine li span:empty{display:none}
+  .semaine li span.hoy{background:var(--jaune);color:var(--marine)}
+  .semaine li span.ok{background:var(--vert);color:#fff}
+  .semaine li span.ctl{background:var(--rouge);color:#fff}
+  .ensuite{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:16px 0 18px}
+  .ensuite > *{flex:1;border-radius:14px;padding:10px 12px;background:rgba(255,255,255,.08);font-size:17px;font-weight:700;color:var(--encre-douce);line-height:1.35}
   .ensuite small{display:block;font-weight:500;font-size:15px}
-  .gros{margin-top:auto}
+  /* Le bouton reste à portée de pouce, même si l'écran défile */
+  .gros{margin-top:auto;position:sticky;bottom:max(14px,env(safe-area-inset-bottom))}
 </style>
 </head>
 <body>
@@ -31,37 +55,79 @@
   </header>
 
   <span class="bandeau" id="bandeau"></span>
-  <section class="page" id="page"></section>
+  <section class="gain">
+    <span class="mini-sobre" aria-hidden="true"></span>
+    <p>Al terminar: un sobre con un animal sorpresa<small>¿Cuál te tocará hoy?</small></p>
+  </section>
 
   <section class="resume">
-    <p><b>Deberes de hoy</b><span>≈ 10 min</span></p>
-    <div class="chemin" id="chemin"></div>
+    <p><b id="nbPasos">Deberes de hoy</b><span>≈ 10 min</span></p>
+    <ol class="pasos" id="pasos"></ol>
   </section>
+
+  <section class="semaine" id="semaine" hidden><b>Esta semana</b><ul id="semaineListe"></ul></section>
+
+  <a class="animales" href="album-animales.html"><b>Mis animales<small id="compte"></small></b><span class="derniers" id="derniers"></span></a>
 
   <nav class="ensuite" id="ensuite"></nav>
 
   <a class="gros" id="go">¡A los deberes!</a>
 </main>
 
-<script src="commun.js?v=5"></script>
-<script src="lecons.js?v=5"></script>
+<script src="commun.js?v=10"></script>
+<script src="lecons.js?v=11"></script>
+<script src="maths.js?v=14"></script>
+<script src="animaux.js?v=10"></script>
+<script src="sync.js?v=1"></script>
+<script src="deberes.js?v=2"></script>
 <script>
-  const ID = new URLSearchParams(location.search).get("lecon") || LECON_DU_JOUR;
-  const L = LECONS[ID];
+  // La séance du jour est choisie par deberes.js (réglages des parents, contrôles, Repaso) ; ?lecon=X l'impose.
+  const DEMANDEE = new URLSearchParams(location.search).get("lecon");
   const $ = (id) => document.getElementById(id);
   $("ecouter").innerHTML = ICONES.hautparleur;
-  $("bandeau").textContent = L.titre;
-  $("page").setAttribute("aria-label", "Tu álbum: " + L.titre);
-  if (L.cromos.length > 4) $("page").classList.add("six");
-  L.cromos.forEach((c, i) => { const h = document.createElement("div"); h.className = "hueco"; h.textContent = i + 1; $("page").append(h); });
-  const ICONE = { descubre: "oeil", toca: "oreille", elige: "question", vrai: "ok", letras: "lettres", papa: "duo", cuaderno: "crayon" };
-  $("chemin").innerHTML = [...L.etapes.map((e) => ICONE[e.type]), "etoile"].map((e) => `<span class="case">${ICONES[e]}</span>`).join("");
-  $("go").href = "seance.html?lecon=" + ID;
-  $("ensuite").innerHTML = Object.entries(LECONS).filter(([k]) => k !== ID)
-    .map(([k, l]) => `<a href="index.html?lecon=${k}">${l.court}<small>${l.sujet}</small></a>`).join("")
-    + `<div>Mates<small>Problemas · pronto</small></div>`;
+  const mes = collection();
+  $("compte").textContent = `${mes.length} de ${ANIMAUX.length}`;
+  mes.slice(-3).forEach((n) => $("derniers").append(cromoAnimal(ANIMAUX.find((a) => a.n === n), { noms: false })));
+
+  let ID;
+  function afficher() {
+    ID = LECONS[DEMANDEE] ? DEMANDEE : Deberes.leconDuJour().id;
+    const L = LECONS[ID];
+    $("bandeau").textContent = L.titre;
+    $("nbPasos").textContent = `Hoy: ${L.etapes.length} ${L.etapes.length > 1 ? "pasos" : "paso"} y tu sobre`;
+    $("pasos").innerHTML = [...L.etapes, { type: "fin" }].map((e, i) =>
+      `<li class="${e.type === "fin" ? "fin" : ""}"><span class="num">${e.type === "fin" ? "★" : i + 1}</span>${ICONES[Deberes.ICONE[e.type]]}${Deberes.nomEtape(e)}</li>`).join("");
+    const sem = Deberes.semaine(ID);
+    $("semaine").hidden = !sem.length;
+    $("semaineListe").innerHTML = sem.map((t) => `<li>${t.nom}<span class="${t.etiquette.classe}">${t.etiquette.texte}</span></li>`).join("");
+    $("go").href = "seance.html?lecon=" + ID;
+    // Les autres leçons, en accès libre (pas le Repaso : il ne se fait que le jour prévu).
+    $("ensuite").innerHTML = Object.entries(LECONS).filter(([k]) => k !== ID && k !== Deberes.REPASO)
+      .map(([k, l]) => `<a href="index.html?lecon=${k}">${l.court}<small>${l.sujet}</small></a>`).join("");
+  }
+  afficher();
   $("ecouter").addEventListener("click", () =>
-    dire(`¡Hola Dorian! Hoy: ${L.titre}. Puedes ganar ${L.cromos.length} cromos. Toca: a los deberes.`));
+    dire(`¡Hola Dorian! Hoy: ${LECONS[ID].titre}. Al terminar, abrirás un sobre con un animal sorpresa. Toca: a los deberes.`));
+
+  // Synchronisation : une séance restée en attente part, et les réglages des parents arrivent (sans rien bloquer).
+  Deberes.recuperer();
+  Sync.vider();
+  Sync.rafraichirAjustes().then((a) => { if (a && !DEMANDEE) afficher(); }).catch((err) => console.warn("Ajustes:", err.message));
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") Sync.vider(); });
+
+  // Brancher ce téléphone sur le Google Sheet : appui long (2 s) sur « ¡Hola, Dorian! ». Rien de visible pour Dorian.
+  let appui;
+  const titre = document.querySelector("h1");
+  titre.addEventListener("pointerdown", () => { appui = setTimeout(conectar, 2000); });
+  ["pointerup", "pointerleave", "pointercancel"].forEach((ev) => titre.addEventListener(ev, () => clearTimeout(appui)));
+  titre.addEventListener("contextmenu", (ev) => ev.preventDefault());
+  async function conectar() {
+    const ya = Sync.lien();
+    const texte = prompt((ya ? "Este teléfono ya está conectado.\n" : "") + "Pega el enlace del script de Google (termina en /exec#clave):");
+    if (!texte) return;
+    try { await Sync.brancher(texte); await Sync.vider(); afficher(); alert("Conectado. Los ajustes de papá y mamá llegarán solos."); }
+    catch (err) { alert("No se pudo conectar: " + err.message + "."); }
+  }
 </script>
 </body>
 </html>

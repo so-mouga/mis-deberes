@@ -69,3 +69,11 @@ a{color:inherit;text-decoration:none}
 }
 
 [hidden]{display:none!important}
+
+/* Cromos d'animaux */
+.cromo.animal .art{position:relative}
+.cromo.animal .art img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:1}
+.cromo.animal .provisoire{font-weight:850;font-size:20px;text-align:center;padding:6px;line-height:1.1;text-transform:capitalize}
+.cromo.animal b{background:var(--marine)}
+.cromo.animal.oro{background:linear-gradient(135deg,#F7D774,#E0A800 45%,#FFE9A3 55%,#C98F00);}
+.cromo.animal.oro b{background:#B07A00}
