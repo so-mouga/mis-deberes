@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#2347A8">
+<title>Deberes · La casa</title>
+<link rel="preload" href="assets/fonts/lexend-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="style.css?v=5">
+<style>
+  header{display:flex;align-items:center;gap:12px}
+  header .chemin{flex:1}
+  .consigne{display:flex;align-items:center;gap:12px;margin:16px 0 14px;min-height:62px}
+  .consigne p{font-size:23px;font-weight:800;line-height:1.2;letter-spacing:-.01em}
+  #scene{flex:1;display:flex;flex-direction:column;gap:16px}
+  .entre{animation:entre .45s var(--ease) both}
+  @keyframes entre{from{opacity:0;transform:translateY(12px)}}
+
+  /* Descubre */
+  .grand{width:min(300px,80%);align-self:center}
+  .grand b{font-size:30px}
+  .sens{align-self:center;font-size:22px;font-weight:600;color:var(--encre-douce)}
+
+  /* Choix en images */
+  .grille{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:auto 0}
+  .choix{transition:transform .25s var(--ease),opacity .35s var(--ease),box-shadow .25s var(--ease)}
+  .choix:active{transform:scale(.97)}
+  .choix.calme{opacity:.4}
+  .choix.montre{box-shadow:0 0 0 6px var(--jaune),0 6px 14px rgba(0,0,0,.4);animation:releve 1.2s var(--ease) 2}
+  .choix.bonne{box-shadow:0 0 0 6px var(--vert),0 6px 14px rgba(0,0,0,.4)}
+  @keyframes releve{50%{transform:translateY(-6px)}}
+
+  /* What's this? */
+  .image{width:min(250px,70%);align-self:center}
+  .mots{display:flex;flex-direction:column;gap:12px;margin-top:auto}
+  .mot{min-height:64px;border-radius:32px;background:#fff;color:var(--marine);font-size:26px;font-weight:800;box-shadow:0 5px 0 #B9C7EA;transition:transform .2s var(--ease),background .3s,opacity .3s,box-shadow .25s}
+  .mot:active{transform:translateY(3px)}
+  .mot.lu{background:var(--ciel)}
+  .mot.calme{opacity:.4}
+  .mot.montre{box-shadow:0 0 0 5px var(--jaune),0 5px 0 #B9C7EA}
+  .mot.bonne{background:var(--vert);color:#fff;box-shadow:0 5px 0 var(--vert-f)}
+
+  /* Lettres manquantes */
+  .petit{width:150px;align-self:center}
+  .cases{display:flex;flex-wrap:wrap;justify-content:center;gap:6px}
+  .l{width:40px;height:52px;border-radius:10px;display:grid;place-items:center;font-size:30px;font-weight:800;background:#fff;color:var(--marine)}
+  .l.trou{background:transparent;border:3px dashed rgba(255,255,255,.6);color:#fff}
+  .l.trou.suivant{border-color:var(--jaune);border-style:solid}
+  .l.trou.rempli{background:var(--jaune);border:0;color:var(--marine);animation:pose .35s var(--ease)}
+  .l.espace{width:14px;background:none}
+  @keyframes pose{from{transform:scale(1.4)}}
+  .tuiles{display:flex;flex-wrap:wrap;justify-content:center;gap:12px;margin-top:auto}
+  .tuile{width:66px;height:72px;border-radius:14px;background:var(--jaune);color:var(--marine);font-size:34px;font-weight:850;box-shadow:0 5px 0 var(--jaune-f);transition:transform .2s var(--ease),opacity .3s}
+  .tuile:active{transform:translateY(3px)}
+  .tuile.non{opacity:.45}
+  .tuile.partie{visibility:hidden}
+
+  /* Avec papa ou maman */
+  .carte-parent{background:#fff;color:var(--marine);border-radius:22px;padding:18px;display:flex;flex-direction:column;gap:14px;box-shadow:0 8px 18px rgba(0,0,0,.3)}
+  .carte-parent .q{font-size:27px;font-weight:850;line-height:1.2;text-align:center}
+  .carte-parent .cromo{width:170px;align-self:center;box-shadow:none;border:2px solid #DCE4F5}
+  .reponse{display:flex;align-items:center;justify-content:space-between;gap:10px;border-top:2px dashed #DCE4F5;padding-top:12px;font-size:18px;font-weight:600;color:#55617A}
+  .reponse b{font-size:24px;color:var(--marine)}
+  .reponse .rond{width:48px;height:48px;background:var(--ciel);color:var(--marine);box-shadow:none}
+  .boutons{display:flex;flex-direction:column;gap:14px;margin-top:auto}
+
+  /* Cahier */
+  .cahier{background:#fff;border-radius:18px;padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:12px;
+    background-image:linear-gradient(#DCE4F5 1px,transparent 1px);background-size:100% 26px}
+  .cahier .cromo{box-shadow:0 3px 8px rgba(0,0,0,.25)}
+  .cahier .cromo b{font-size:24px}
+  .note{font-size:21px;font-weight:600;color:var(--encre-douce);text-align:center}
+
+  /* Démo : la main */
+  .main{position:fixed;width:58px;height:58px;z-index:20;pointer-events:none;filter:drop-shadow(0 6px 6px rgba(0,0,0,.35))}
+  .bulle{position:fixed;z-index:20;background:#fff;color:var(--marine);font-weight:800;font-size:20px;padding:8px 14px;border-radius:14px;pointer-events:none}
+
+  /* Tren de los meses */
+  .tren{display:flex;justify-content:center;align-items:flex-end;gap:6px;margin:auto 0 0}
+  .wagon{position:relative;min-width:88px;padding:14px 8px 16px;border-radius:12px 12px 6px 6px;background:#fff;color:var(--marine);font-size:18px;font-weight:800;text-align:center;margin-bottom:12px}
+  .wagon::before,.wagon::after{content:"";position:absolute;bottom:-12px;width:18px;height:18px;border-radius:50%;background:var(--marine);border:3px solid #fff}
+  .wagon::before{left:14px}.wagon::after{right:14px}
+  .wagon.vide{background:transparent;border:3px dashed var(--jaune);color:var(--jaune);font-size:30px}
+  .question{font-size:25px;font-weight:850;text-align:center;line-height:1.2;margin-top:6px}
+  .cahier.trois{grid-template-columns:1fr 1fr 1fr}
+  .cahier.trois .cromo b{font-size:17px}
+  .cahier.trois .cromo .txt{font-size:36px}
+
+  /* Voiles */
+  .voile{position:fixed;inset:0;z-index:30;background:var(--page);background-image:radial-gradient(rgba(255,255,255,.06) 1.5px,transparent 1.6px);background-size:18px 18px;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px;padding:28px 22px;text-align:center}
+  .voile[hidden]{display:none}
+  .voile h2{font-size:36px;font-weight:900;letter-spacing:-.02em;line-height:1.08}
+  .voile p{font-size:21px;font-weight:600;color:var(--encre-douce);max-width:24ch}
+  .voile .gros{max-width:360px}
+  .souffle{width:170px;height:170px;border-radius:50%;background:var(--ciel);display:grid;place-items:center;color:var(--page);font-weight:850;font-size:24px;
+    animation:souffle 8s ease-in-out infinite}
+  @keyframes souffle{0%,100%{transform:scale(.8)}50%{transform:scale(1.15)}}
+  #finPage{display:grid;grid-template-columns:1fr 1fr;gap:12px;width:min(340px,90vw)}
+  #finPage.six{grid-template-columns:1fr 1fr 1fr}
+  #finPage.six .cromo b{font-size:16px}
+  #finPage .cromo.colle{animation:colle .8s var(--ease) both}
+  @keyframes colle{0%{transform:translateY(-60px) rotateY(180deg) scale(.6);opacity:0}60%{opacity:1}100%{transform:none}}
+  .horloge{width:150px;height:150px;position:relative;display:grid;place-items:center;font-size:34px;font-weight:850;font-variant-numeric:tabular-nums}
+  .horloge svg{position:absolute;inset:0;transform:rotate(-90deg)}
+  .horloge circle{fill:none;stroke-width:10}
+</style>
+</head>
+<body>
+<main class="ecran">
+  <header>
+    <div class="chemin" id="chemin" aria-label="Pasos de hoy"></div>
+    <button class="rond jaune" id="pause" aria-label="Necesito una pausa"></button>
+  </header>
+  <div class="consigne">
+    <button class="rond" id="redire" aria-label="Escuchar otra vez"></button>
+    <p id="texte" aria-live="polite"></p>
+  </div>
+  <section id="scene"></section>
+</main>
+
+<section class="voile" id="voilePause" hidden>
+  <div class="souffle" id="souffle">Respira</div>
+  <h2>Una pausa</h2>
+  <p>Respira despacio con el círculo. Cuando quieras, seguimos.</p>
+  <button class="gros" id="seguir">Seguir</button>
+</section>
+
+<section class="voile" id="voileFin" hidden>
+  <span class="bandeau" id="finBandeau"></span>
+  <div id="finPage"></div>
+  <h2 id="finTitre">¡Cromos nuevos!</h2>
+  <a class="gros" id="finBouton" href="index.html" hidden>Ver mi álbum</a>
+</section>
+
+<script src="commun.js?v=5"></script>
+<script src="lecons.js?v=5"></script>
+<script src="moteur.js?v=5"></script>
+</body>
+</html>

@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#2347A8">
+<title>Deberes de hoy</title>
+<link rel="preload" href="assets/fonts/lexend-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="style.css?v=5">
+<style>
+  header{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+  h1{flex:1;font-weight:850;font-size:clamp(28px,8.2vw,34px);letter-spacing:-.02em;line-height:1.05}
+  .page{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px}
+  .page.six{grid-template-columns:1fr 1fr 1fr}
+  .page.six .hueco{font-size:26px}
+  .resume{margin-top:18px;background:var(--page-fonce);border-radius:20px;padding:14px 14px 16px}
+  .resume .case{background:rgba(255,255,255,.12)}
+  .resume p{display:flex;justify-content:space-between;align-items:baseline;font-size:19px;font-weight:600;color:var(--encre-douce);margin-bottom:10px}
+  .resume p b{font-size:21px;font-weight:800;color:#fff}
+  .ensuite{display:flex;gap:10px;margin:16px 0 18px}
+  .ensuite > *{flex:1;border-radius:14px;padding:10px 12px;background:rgba(255,255,255,.08);font-size:17px;font-weight:700;color:var(--encre-douce);line-height:1.25}
+  .ensuite small{display:block;font-weight:500;font-size:15px}
+  .gros{margin-top:auto}
+</style>
+</head>
+<body>
+<main class="ecran">
+  <header>
+    <h1>¡Hola, Dorian!</h1>
+    <button class="rond" id="ecouter" aria-label="Escuchar"></button>
+  </header>
+
+  <span class="bandeau" id="bandeau"></span>
+  <section class="page" id="page"></section>
+
+  <section class="resume">
+    <p><b>Deberes de hoy</b><span>≈ 10 min</span></p>
+    <div class="chemin" id="chemin"></div>
+  </section>
+
+  <nav class="ensuite" id="ensuite"></nav>
+
+  <a class="gros" id="go">¡A los deberes!</a>
+</main>
+
+<script src="commun.js?v=5"></script>
+<script src="lecons.js?v=5"></script>
+<script>
+  const ID = new URLSearchParams(location.search).get("lecon") || LECON_DU_JOUR;
+  const L = LECONS[ID];
+  const $ = (id) => document.getElementById(id);
+  $("ecouter").innerHTML = ICONES.hautparleur;
+  $("bandeau").textContent = L.titre;
+  $("page").setAttribute("aria-label", "Tu álbum: " + L.titre);
+  if (L.cromos.length > 4) $("page").classList.add("six");
+  L.cromos.forEach((c, i) => { const h = document.createElement("div"); h.className = "hueco"; h.textContent = i + 1; $("page").append(h); });
+  const ICONE = { descubre: "oeil", toca: "oreille", elige: "question", vrai: "ok", letras: "lettres", papa: "duo", cuaderno: "crayon" };
+  $("chemin").innerHTML = [...L.etapes.map((e) => ICONE[e.type]), "etoile"].map((e) => `<span class="case">${ICONES[e]}</span>`).join("");
+  $("go").href = "seance.html?lecon=" + ID;
+  $("ensuite").innerHTML = Object.entries(LECONS).filter(([k]) => k !== ID)
+    .map(([k, l]) => `<a href="index.html?lecon=${k}">${l.court}<small>${l.sujet}</small></a>`).join("")
+    + `<div>Mates<small>Problemas · pronto</small></div>`;
+  $("ecouter").addEventListener("click", () =>
+    dire(`¡Hola Dorian! Hoy: ${L.titre}. Puedes ganar ${L.cromos.length} cromos. Toca: a los deberes.`));
+</script>
+</body>
+</html>
