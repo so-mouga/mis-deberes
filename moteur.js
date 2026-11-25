@@ -310,9 +310,10 @@ async function fin() {
 
 function descanso() {
   const v = $("voileFin");
-  v.innerHTML = `<div class="horloge"><svg viewBox="0 0 150 150"><circle cx="75" cy="75" r="68" stroke="rgba(255,255,255,.15)"/><circle id="arc" cx="75" cy="75" r="68" stroke="#F2B90F" stroke-linecap="round" stroke-dasharray="427" stroke-dashoffset="0"/></svg><span id="reste">5:00</span></div>
-    <h2>¡Descanso!</h2><p>Ahora: 5 minutos de tu juego, o salta y muévete un poco. Te aviso cuando acabe.</p><a class="gros clair" href="album-animales.html">Ver mis animales</a>`;
-  dire("¡Descanso! Ahora tienes cinco minutos para tu juego. Te aviso cuando acabe.");
+  const min = Sync.pausa().minutos; // 5 ou 10 min, réglé par les parents
+  v.innerHTML = `<div class="horloge"><svg viewBox="0 0 150 150"><circle cx="75" cy="75" r="68" stroke="rgba(255,255,255,.15)"/><circle id="arc" cx="75" cy="75" r="68" stroke="#F2B90F" stroke-linecap="round" stroke-dasharray="427" stroke-dashoffset="0"/></svg><span id="reste">${min}:00</span></div>
+    <h2>¡Descanso!</h2><p>Ahora: ${min} minutos de tu juego, o salta y muévete un poco. Te aviso cuando acabe.</p><a class="gros clair" href="album-animales.html">Ver mis animales</a>`;
+  dire(`¡Descanso! Ahora tienes ${min === 10 ? "diez" : "cinco"} minutos para tu juego. Te aviso cuando acabe.`);
   // Une 2e séance, seulement proposée (jamais une 3e) : à la fin du minuteur, ou plus tôt avec « Ya he descansado ».
   const propo = Deberes.deuxiemeSeance(ID);
   let tic;
@@ -321,7 +322,7 @@ function descanso() {
     b.addEventListener("click", () => { clearInterval(tic); proposer(propo); });
     v.append(b);
   }
-  const debut = Date.now(), total = 5 * 60 * 1000;
+  const debut = Date.now(), total = min * 60 * 1000;
   tic = setInterval(() => {
     const r = Math.max(0, total - (Date.now() - debut)), s = Math.ceil(r / 1000);
     $("reste").textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;

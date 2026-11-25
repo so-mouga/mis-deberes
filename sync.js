@@ -164,7 +164,16 @@ const Sync = (() => {
   const lireProgreso = async () => { const l = lien(); if (!l) return null; return (await obtenir(l, "progreso")).progreso; };
   const ajouterProgreso = async (partiel) => { const l = lien(); if (!l) throw new Error("no conectado"); return (await poster(l, { accion: "progreso", progreso: partiel })).progreso; };
 
-  return { lien, lireLien, brancher, fusionnerProgreso, synchroniserProgreso, lienBranchement, lireProgreso, ajouterProgreso, debrancher, ajustes, rafraichirAjustes, guardarAjustes, sesiones, enAttente, encoler, vider };
+  // La pause, réglée par les parents (pour les jeux de la pause et le minuteur du descanso) :
+  // { minutos: 5 | 10, libreEnBonus: bool, maxMinutos: 15 }. « libreEnBonus » : une partie offerte ou bonus
+  // dure jusqu'à la fin du jeu, avec une limite de 15 min ; jamais entre deux séances.
+  // Sans réglage (pas encore branché, ancien script), 5 min et pas de mode libre.
+  function pausa() {
+    const p = (ajustes() || {}).pausa || {};
+    return { minutos: p.minutos === 10 ? 10 : 5, libreEnBonus: !!p.libreEnBonus, maxMinutos: 15 };
+  }
+
+  return { pausa, lien, lireLien, brancher, fusionnerProgreso, synchroniserProgreso, lienBranchement, lireProgreso, ajouterProgreso, debrancher, ajustes, rafraichirAjustes, guardarAjustes, sesiones, enAttente, encoler, vider };
 })();
 
 // ---- Les tickets de jeu (sur les téléphones de Dorian) ----

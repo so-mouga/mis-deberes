@@ -136,10 +136,18 @@
     </section>
 
     <section class="carte" style="margin-top:14px">
+      <h2>Descanso entre sesiones</h2>
+      <div class="ligne"><select id="pausaMin" aria-label="Duración del descanso"><option value="5">5 minutos</option><option value="10">10 minutos</option></select></div>
+      <p class="aide">El juego del descanso dura un poco menos (unos 3 min para 5, unos 8 min para 10) y siempre se para solo.</p>
+    </section>
+
+    <section class="carte" style="margin-top:14px">
       <h2>Partidas de juego</h2>
       <p id="partidas">…</p>
       <div class="ligne" style="margin-top:10px"><button class="btn jaune" id="regalar">Regalar una partida</button></div>
       <p class="aide">Cada sesión terminada le da una partida (nunca depende de los aciertos). Para los días sin deberes, como el fin de semana o las vacaciones, puedes regalarle una.</p>
+      <label class="ligne" style="margin-top:10px;font-weight:600;cursor:pointer"><input type="checkbox" id="libreBonus" style="width:24px;height:24px;accent-color:var(--jaune);flex:none"> Las partidas regaladas duran hasta terminar el juego (máximo 15 min)</label>
+      <p class="aide">Nunca entre dos sesiones de deberes: ahí el juego siempre se para solo.</p>
     </section>
 
     <section class="carte" style="margin-top:14px">
@@ -183,7 +191,7 @@
 
 <script src="lecons.js?v=11"></script>
 <script src="maths.js?v=14"></script>
-<script src="sync.js?v=3"></script>
+<script src="sync.js?v=4"></script>
 <script src="deberes.js?v=4"></script>
 <script>
   const $ = (id) => document.getElementById(id);
@@ -280,12 +288,18 @@
       </div>`;
     });
     $("temas").innerHTML = html;
+    const pz = A.pausa || {};
+    $("pausaMin").value = pz.minutos === 10 ? "10" : "5";
+    $("libreBonus").checked = !!pz.libreEnBonus;
     $("repasoDia").innerHTML = [1, 2, 3, 4, 5, 6, 0].map((d) => `<option value="${d}"${d === +(A.repasoDia ?? 5) ? " selected" : ""}>Cada ${DIAS[d]}</option>`).join("");
     afficherHoy();
   }
 
   $("forzar").addEventListener("change", (ev) => changer({ forzada: ev.target.value ? { lecon: ev.target.value, fecha: hoy() } : null }));
   $("repasoDia").addEventListener("change", (ev) => changer({ repasoDia: +ev.target.value }));
+  const pausaActuelle = () => ({ minutos: +$("pausaMin").value === 10 ? 10 : 5, libreEnBonus: $("libreBonus").checked });
+  $("pausaMin").addEventListener("change", () => changer({ pausa: pausaActuelle() }));
+  $("libreBonus").addEventListener("change", () => changer({ pausa: pausaActuelle() }));
   $("temas").addEventListener("change", (ev) => {
     const ligne = ev.target.closest(".tema");
     if (!ligne) return;

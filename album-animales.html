@@ -17,7 +17,8 @@
   section{margin-top:18px}
   section .bandeau{font-size:20px}
   .grille{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:12px}
-  .grille .cromo b{font-size:14px}
+  .grille > *{min-width:0}
+  .grille .cromo b{font-size:14px;overflow-wrap:anywhere;hyphens:auto}
   .grille .hueco{font-size:22px}
   .grille button.cromo{text-align:inherit}
   .zoom{position:fixed;inset:0;z-index:20;background:rgba(10,20,60,.82);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:24px;text-align:center}
@@ -48,8 +49,8 @@
 </div>
 
 <script src="commun.js?v=10"></script>
-<script src="animaux.js?v=11"></script>
-<script src="sync.js?v=3"></script>
+<script src="animaux.js?v=12"></script>
+<script src="sync.js?v=4"></script>
 <script>
   const $ = (id) => document.getElementById(id);
   if (new URLSearchParams(location.search).has("reset")) localStorage.removeItem(CLE_COLLECTION);
