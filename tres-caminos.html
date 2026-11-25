@@ -1,0 +1,526 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Los tres caminos</title>
+<link rel="stylesheet" href="style.css?v=10">
+<link rel="stylesheet" href="pause.css?v=1">
+<style>
+</style>
+</head>
+<body>
+<main class="jeu">
+  <div class="hud"><h1>Tres caminos</h1><div class="temps"><i id="barre"></i></div><span class="total" id="total"><i id="pastille"></i><span id="nb">0</span></span></div>
+  <div class="ultimo" id="ultimo" hidden>¡Último minuto!</div>
+  <section class="choix" id="choix">
+    <h2>¿Quién corre hoy?</h2>
+    <div class="heros" id="heros"></div>
+  </section>
+  <section class="terrain" id="terrain" hidden>
+    <canvas id="toile"></canvas>
+    <div class="bulle" id="bulle" hidden></div>
+  </section>
+</main>
+<section class="ecran-fin" id="fin" hidden></section>
+
+<script src="commun.js?v=10"></script>
+<script src="animaux.js?v=12"></script>
+<script src="sync.js?v=5"></script>
+<script src="pause-commun.js?v=2"></script>
+<script>
+// Tres caminos : on court sur 3 chemins et on traverse les 4 mondes.
+// Une seule action : toucher à gauche ou à droite (le glissé marche aussi). Zéro échec : un obstacle fait « ¡Boing! ».
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const DOUX = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // ---- Les 4 mondes : chemin, trésor, obstacle, passage spécial ----
+  const MONDES = {
+    mar:      { nom: "el mar", titre: "¡El mar!", item: "perlas", couleur: "#FFFFFF", bord: "#9FC2F0", ciel: ["#6CC4F5", "#CFE8FF"], colline: "#9FD3F7", sol: "#3F8FD8", bande: "#7FC0F0", cote: "#F2D58A", touffe: "#D9B45A", obst: "coral", passage: "tunel" },
+    selva:    { nom: "la selva", titre: "¡La selva!", item: "frutas", couleur: "#F08A1C", bord: "#2E9E57", ciel: ["#A8E6C0", "#E9FBEF"], colline: "#8FD3A5", sol: "#B98A5A", bande: "#D9B07E", cote: "#3BA548", touffe: "#2B7F3A", obst: "tronco", passage: "puente" },
+    polos:    { nom: "los polos", titre: "¡Los polos!", item: "cristales", couleur: "#7FD6E8", bord: "#3E6E99", ciel: ["#C9D6FF", "#F1F5FF"], colline: "#C9C1EE", sol: "#A9D2F2", bande: "#FFFFFF", cote: "#FFFFFF", touffe: "#BFD4F0", obst: "hielo", passage: "tobogan" },
+    gigantes: { nom: "el mundo de los gigantes", titre: "¡Los gigantes!", item: "gemas", couleur: "#E0453F", bord: "#A82B26", ciel: ["#FFD38A", "#FFF1CF"], colline: "#E9A86A", sol: "#D9B45A", bande: "#EFD08A", cote: "#B98A3A", touffe: "#8A6428", obst: "roca", passage: "canon" },
+  };
+  const TOUR = ["mar", "selva", "polos", "gigantes"];
+  const PASSAGES = {
+    tunel:   { nom: "¡El túnel de coral!", voix: "¡El túnel de coral! ¡Cuántas perlas!" },
+    puente:  { nom: "¡El puente de lianas!", voix: "¡El puente de lianas! ¡Cuidado, que se mueve!" },
+    tobogan: { nom: "¡Tobogán de hielo!", voix: "¡El tobogán de hielo! ¡Wiiii!" },
+    canon:   { nom: "¡El cañón de los gigantes!", voix: "¡El cañón de los gigantes! ¡Mira los huevos gigantes!" },
+  };
+
+  // ---- Chaque animal a un pouvoir (7 familles) ----
+  const FAMILLES = {
+    aimant:   { n: [1, 8, 16], txt: "Atrapa tesoros", voix: "¡Atrapa los tesoros de los otros caminos!" },
+    casseur:  { n: [9, 11, 15, 18], txt: "Rompe obstáculos", voix: "¡Rompe todos los obstáculos! ¡Crac!" },
+    rapide:   { n: [2, 6, 10, 17], txt: "Corre muy rápido", voix: "¡Es el más rápido!" },
+    carapace: { n: [5], txt: "Rebota: ¡clonc!", voix: "¡Con su caparazón, rebota en todo! ¡Clonc!" },
+    sauteur:  { n: [4, 12, 14], txt: "Salta solo", voix: "¡Salta solo por encima de los obstáculos!" },
+    geant:    { n: [3, 13], txt: "Surfea las olas", voix: "¡Coge las olas y recoge los tres caminos!" },
+    double:   { n: [7], txt: "Tesoros dobles", voix: "Va despacito… ¡pero cada tesoro vale dos!" },
+  };
+  const famille = (n) => Object.keys(FAMILLES).find((k) => FAMILLES[k].n.includes(n)) || "rapide";
+  const LIEN = { 1: "#B05BE0", 8: "#F28AB2", 16: "#2E9E57" }; // tentacule, langue, pinces
+
+  // ---- Choisir qui court (ses animaux) ----
+  choixAnimal($("heros"), { sousTitre: (a) => FAMILLES[famille(a.n)].txt, surChoix: (a) => commencer(a) });
+  dire("¡Los tres caminos! ¿Quién corre hoy?");
+
+  // ---- Toile et perspective ----
+  const toile = $("toile"), g = toile.getContext("2d");
+  let L, H, U, HOR, BAS;
+  function dimensionner() {
+    const dpr = Math.min(devicePixelRatio || 1, 2), t = $("terrain");
+    L = t.clientWidth; H = t.clientHeight; toile.width = L * dpr; toile.height = H * dpr; g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    U = Math.min(L / 400, H / 700); HOR = H * .32; BAS = H * .86;
+  }
+  addEventListener("resize", () => { if (!$("terrain").hidden) dimensionner(); });
+  // d = distance devant le héros (0 = lui, LOIN = l'horizon) ; c = couloir (-1, 0, 1 ; les côtés au-delà de ±1.6)
+  const LOIN = 40, PRES = -.95; // PRES : le bas de l'écran
+  const echelle = (d) => 1 / (1 + d * .22);
+  const proj = (c, d) => { const s = echelle(d); return { x: L / 2 + c * L * .3 * s, y: HOR + (BAS - HOR) * s, s }; };
+  function quadSol(c0, c1, d0, d1) { const a = proj(c0, d0), b = proj(c1, d0), c = proj(c1, d1), e = proj(c0, d1); g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.lineTo(c.x, c.y); g.lineTo(e.x, e.y); g.closePath(); }
+  function rect(x, y, w, h, r) { g.beginPath(); if (g.roundRect) g.roundRect(x, y, w, h, r); else g.rect(x, y, w, h); }
+
+  // ---- Sons ----
+  const sonPas = () => note(380, 560, .08, .06);
+  const sonCasse = SONS_JEU.casse;
+  const sonFanfare = () => [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => note(f, f * 1.01, .22, .12, "triangle"), i * 90));
+  const sonTurbo = () => { bruitFiltre(1200, .8, .35, .6); note(300, 900, .3, .08, "sawtooth"); };
+  const sonClonc = () => { note(180, 140, .12, .2, "square"); setTimeout(() => note(700, 900, .1, .08), 70); };
+  const sonPorte = () => [784, 988, 1175, 1568].forEach((f, i) => setTimeout(() => note(f, f, .18, .1), i * 70));
+
+  // ---- État ----
+  let A, F, M, mPrec, mSem, fondu = 1, visites = 1, iMonde = 0;
+  let fini = false, debut = 0, items = 0, avance = 0, prochain = 6, tJeu = 0;
+  let aimantT = 0, superT = 0, turboT = 0, olaT = 0, ralentiT = 0, flashT = 0, secousse = 0;
+  let etape = 0, evPassage = false, evPluie = false, combo = 0, dernierItem = -9, nFile = 0, dejaWiii = false;
+  const ETAPE = TEST_RAPIDE ? Math.max(5000, DUREE_JEU / 4) : 40000; // un monde toutes les 40 s
+  const objets = [], decor = [], bords = [], zones = [], pops = [], fumees = [], traits = [], fichiers = {};
+  const eclats = new Eclats();
+  const heros = { c: 0, vis: 0, boing: 0, img: imageSure(), taille: 1, pas: 0, sautT: 0, h: 0, rebond: 0, solAvant: true, vers: 1, sprite: null };
+
+  function commencer(a) {
+    A = a; F = famille(a.n); M = mPrec = mSem = a.m; iMonde = TOUR.indexOf(a.m); audio().resume?.();
+    $("choix").hidden = true; $("terrain").hidden = false; dimensionner();
+    couleurPastille();
+    heros.img.src = imgAnimal(a.n);
+    heros.sprite = chargerSprites([a.n])[a.n];
+    for (let d = 2; d < LOIN; d += 3.2) decor.push({ c: Math.random() < .5 ? -2 : 2, d, k: Math.random(), m: M });
+    for (let d = 0; d < LOIN; d += 1.3) bords.push({ c: (Math.random() < .5 ? -1 : 1) * (1.75 + Math.random() * 1.2), d, k: Math.random() });
+    dire(`¡${nomMaj(a)} corre! ${FAMILLES[F].voix} Toca a la izquierda o a la derecha.`);
+    bulle("◀ Toca un lado ▶", 3000);
+    debut = Date.now(); minuteur(); requestAnimationFrame(boucle);
+  }
+  function couleurPastille() { $("pastille").style.background = MONDES[M].couleur; $("pastille").style.borderColor = MONDES[M].bord; }
+
+  // ---- Une seule action : toucher à gauche ou à droite (glisser marche aussi) ----
+  let x0 = null;
+  function changer(sens) { const c = Math.max(-1, Math.min(1, heros.c + sens)); heros.vers = sens; if (c !== heros.c) { heros.c = c; sonPas(); } }
+  toile.addEventListener("pointerdown", (e) => { x0 = e.clientX; });
+  toile.addEventListener("pointerup", (e) => {
+    if (fini || x0 === null) return;
+    const dx = e.clientX - x0, b = toile.getBoundingClientRect();
+    if (Math.abs(dx) > 30) changer(dx > 0 ? 1 : -1);
+    else changer(e.clientX - b.left < b.width / 2 ? -1 : 1);
+    x0 = null;
+  });
+
+  // ---- Ce qui arrive : trésors, obstacles, flèches turbo, bonus ----
+  const ajouter = (o) => (objets.push({ m: mSem, ...o }), o);
+  function file(c, d, n, pas = 1.1) { const id = ++nFile; fichiers[id] = { n, pris: 0 }; for (let i = 0; i < n; i++) ajouter({ t: "item", c, d: d + i * pas, file: id }); }
+  function semer() {
+    const d = LOIN, r = Math.random(), libre = Math.floor(Math.random() * 3) - 1, autre = libre === 0 ? (Math.random() < .5 ? -1 : 1) : 0;
+    if (r < .34) { file(libre, d, 5); if (Math.random() < .55) ajouter({ t: "obst", c: autre, d: d + 2 }); prochain = 7.5; }
+    else if (r < .62) { [-1, 0, 1].filter((c) => c !== libre).forEach((c) => ajouter({ t: "obst", c, d })); file(libre, d, 3); prochain = 8; }
+    else if (r < .74) { ajouter({ t: "turbo", c: libre, d }); file(libre, d + 1.5, 4); prochain = 8; }
+    else if (r < .84) { ajouter({ t: F === "geant" && Math.random() < .5 ? "vague" : Math.random() < .5 ? "etoile" : "aimant", c: libre, d }); prochain = 5; }
+    else if (r < .92) { [-1, 0, 1].forEach((c) => ajouter({ t: "item", c, d })); prochain = 5; }
+    else { const id = ++nFile; fichiers[id] = { n: 7, pris: 0 }; [-1, 0, 1, 0, -1, 0, 1].forEach((c, i) => ajouter({ t: "item", c, d: d + i * 1.3, file: id })); prochain = 11; }
+  }
+
+  // ---- Les passages spéciaux (un par monde) et la pluie de trésors ----
+  function passage() {
+    const k = MONDES[mSem].passage, d0 = LOIN + 1, long = TEST_RAPIDE ? 18 : 28;
+    zones.push({ k, d0, d1: d0 + long, m: mSem, dit: false });
+    if (k === "tunel") {
+      for (let d = d0; d < d0 + long; d += 2.6) ajouter({ t: "arcade", c: 0, d });
+      for (let i = 0, d = d0 + 1; d < d0 + long - 1; i++, d += .95) ajouter({ t: "item", c: Math.max(-1, Math.min(1, Math.round(Math.sin(i * .42) * 1.4))), d });
+    } else if (k === "puente") {
+      const seq = [0, 0, 1, 1, 0, -1, -1, 0];
+      for (let i = 0, d = d0 + 1; d < d0 + long - 1; i++, d += 1) ajouter({ t: "item", c: seq[Math.floor(i / 2) % seq.length], d });
+    } else if (k === "tobogan") {
+      for (let d = d0 + 1; d < d0 + long - 1; d += 1.5) [-1, 0, 1].forEach((c) => ajouter({ t: "item", c, d }));
+    } else {
+      [[d0 + 5, -1], [d0 + long * .45, 1], [d0 + long * .8, 0]].forEach(([d, c]) => ajouter({ t: "oeuf", c, d }));
+      for (let d = d0 + 2; d < d0 + long - 1; d += 2.2) ajouter({ t: "item", c: Math.floor(Math.random() * 3) - 1, d });
+    }
+    prochain = long + 3;
+  }
+  function pluie() {
+    const long = TEST_RAPIDE ? 12 : 16;
+    for (let d = LOIN; d < LOIN + long; d += 1.15) ajouter({ t: "item", c: Math.floor(Math.random() * 3) - 1, d, chute: 1 });
+    zones.push({ k: "pluie", d0: LOIN, d1: LOIN + long, m: mSem, dit: false });
+    prochain = long + 2;
+  }
+  function nouveauMonde() { // une porte arrive au loin ; derrière, tout est du nouveau monde
+    iMonde = (iMonde + 1) % 4; const m = TOUR[iMonde];
+    ajouter({ t: "porte", c: 0, d: LOIN, m }); mSem = m; prochain = Math.max(prochain, 3);
+  }
+  function entrerMonde(m) {
+    mPrec = M; M = m; fondu = 0; visites++; couleurPastille();
+    flashT = .5; secousse = 1; sonPorte(); vibrer([20, 40, 20]);
+    const W = MONDES[m]; bulle(`¡Bienvenido a ${W.nom}!`, 2400, true);
+    dire(`¡Bienvenido a ${W.nom}! ¡A buscar ${W.item}!`);
+    confettis(L / 2, H * .45, 34);
+  }
+  const dansZone = (k) => zones.some((z) => z.k === k && z.d0 < .3 && z.d1 > -.3);
+
+  // Vitesse : un cran de plus à chaque monde, plafonnée pour qu'il voie toujours les trésors
+  function vitesse() {
+    const base = 9 + Math.min(4, etape) * .9, f = F === "rapide" ? 1.2 : F === "double" ? .85 : 1;
+    const mult = (superT > 0 ? 1.3 : 1) * (turboT > 0 ? 1.5 : 1) * (dansZone("tobogan") ? 1.45 : 1) * (heros.boing > 0 ? .55 : 1);
+    return Math.min(19, base * f * mult);
+  }
+
+  // ---- Fêtes : textes qui montent, confettis, flash ----
+  const bulle = (txt, ms, or) => messageJeu($("bulle"), txt, ms, or);
+  const pop = (x, y, txt, c = "#fff", taille = 26) => pops.push({ x, y, txt, c, taille, t: 1 });
+  const ARC = ["#E0453F", "#F08A1C", "#F2B90F", "#2E9E57", "#3FB8E8", "#B05BE0"];
+  function confettis(x, y, n) { for (let i = 0; i < n; i++) eclats.jaillir(x, y, ARC[i % 6], 1, 2.4 * U + Math.random() * 3 * U, U * 1.3); }
+  function fete(txt, voix) { flashT = .35; ralentiT = .45; sonFanfare(); vibrer([25, 30, 25]); bulle(txt, 2200, true); dire(voix); confettis(L / 2, BAS - 60 * U, 30); }
+  function poussiere(x, y, n = 3, c = "rgba(255,255,255,.75)") { if (DOUX) n = 1; for (let i = 0; i < n; i++) fumees.push({ x: x + (Math.random() - .5) * 30 * U, y, vx: (Math.random() - .5) * 2, vy: -Math.random() * 1.2, r: (6 + Math.random() * 6) * U, t: 1, c }); }
+
+  function ramasser(o, p) {
+    o.pris = true; const n = F === "double" ? 2 : 1; items += n; compteurPop($("total"), items, $("nb"));
+    combo = tJeu - dernierItem < .55 ? combo + 1 : 0; dernierItem = tJeu;
+    const f = 1046 * Math.pow(2, Math.min(combo, 12) / 12); note(f, f * 1.5, .1, .09);
+    pop(p.x, p.y - 50 * U * p.s, "+" + n, MONDES[o.m].couleur === "#FFFFFF" ? "#fff" : MONDES[o.m].couleur, 22);
+    eclats.jaillir(p.x, p.y - 30 * U, MONDES[o.m].couleur, 4, 2 * U, U);
+    if (o.file && ++fichiers[o.file].pris === fichiers[o.file].n) {
+      pop(L / 2, BAS - 130 * U, "¡Fila completa!", "#F2B90F", 30); [784, 988, 1318].forEach((q, i) => setTimeout(() => note(q, q, .14, .1, "triangle"), i * 70)); confettis(p.x, p.y - 40 * U, 14);
+    }
+    if (Math.floor(items / 50) > Math.floor((items - n) / 50)) { const m = items - items % 50; sonBien(); bulle(`¡${m} tesoros!`, 1800, true); dire(`¡${m} tesoros! ¡Genial!`); }
+  }
+
+  // ---- Dessins : le fond (ciel, collines, chemin) ----
+  function dessinerFond(m) {
+    const W = MONDES[m];
+    const gr = g.createLinearGradient(0, 0, 0, HOR); gr.addColorStop(0, W.ciel[0]); gr.addColorStop(1, W.ciel[1]);
+    g.fillStyle = gr; g.fillRect(-20, -20, L + 40, HOR + 21);
+    g.fillStyle = W.colline; const glisse = (avance * 2) % (L * .25);
+    for (let i = -1; i < 6; i++) { const x = i * L * .25 - glisse * .1; g.beginPath(); g.ellipse(x, HOR, 90 * U, 40 * U, 0, Math.PI, 0); g.fill(); }
+    g.fillStyle = W.cote; g.fillRect(-20, HOR, L + 40, H - HOR + 20);
+    g.fillStyle = W.sol; quadSol(-1.6, 1.6, PRES, LOIN); g.fill();
+    // bandes qui défilent
+    g.fillStyle = W.bande;
+    for (let k = 0; k < 15; k++) {
+      const d1 = ((k * 3 - avance % 3) + 3) % (LOIN + 3) - 1, d2 = d1 + 1.2;
+      for (const cl of [-.5, .5]) { const p1 = proj(cl, Math.max(PRES, d1)), p2 = proj(cl, d2), w1 = 5 * U * p1.s, w2 = 5 * U * p2.s; g.beginPath(); g.moveTo(p1.x - w1, p1.y); g.lineTo(p1.x + w1, p1.y); g.lineTo(p2.x + w2, p2.y); g.lineTo(p2.x - w2, p2.y); g.fill(); }
+    }
+    // petites touffes au bord : elles filent, c'est ce qui donne la vitesse
+    g.fillStyle = W.touffe;
+    for (const o of bords) { if (o.d < PRES || o.d > LOIN || cacheDecor(o.d)) continue; const p = proj(o.c, o.d), s = p.s * U; g.beginPath(); g.ellipse(p.x, p.y, 14 * s, 5 * s, 0, 0, 7); g.fill(); }
+  }
+  const cacheDecor = (d) => zones.some((z) => (z.k === "puente" || z.k === "canon") && d > z.d0 - 1 && d < z.d1 + 1);
+
+  // Le sol des passages (pont, glace, canyon, tunnel)
+  function dessinerZones(t) {
+    for (const z of zones) {
+      const dA = Math.max(z.d0, PRES), dB = Math.min(z.d1, LOIN); if (dA >= dB) continue;
+      if (z.k === "puente") {
+        g.fillStyle = "#3FB8E8"; quadSol(-12, -1.6, dA, dB); g.fill(); quadSol(1.6, 12, dA, dB); g.fill();
+        g.strokeStyle = "rgba(255,255,255,.7)"; g.lineWidth = 3 * U;
+        for (let d = Math.ceil(dA); d < dB; d += 1.4) for (const c of [-3, -6, 3, 6]) { const p = proj(c + Math.sin(t / 400 + d) * .3, d); g.beginPath(); g.moveTo(p.x - 18 * U * p.s, p.y); g.quadraticCurveTo(p.x, p.y - 6 * U * p.s, p.x + 18 * U * p.s, p.y); g.stroke(); }
+        g.fillStyle = "#A8743F"; quadSol(-1.6, 1.6, dA, dB); g.fill();
+        g.strokeStyle = "#7A5230"; g.lineWidth = 2 * U;
+        for (let d = z.d0; d < z.d1; d += .6) { if (d < dA || d > dB) continue; const a = proj(-1.6, d), b = proj(1.6, d); g.lineWidth = Math.max(1, 3 * U * a.s); g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke(); }
+        // poteaux et lianes
+        for (const s of [-1, 1]) {
+          let prev = null;
+          for (let d = z.d0; d <= z.d1; d += 2.4) {
+            if (d < PRES || d > LOIN) { prev = null; continue; }
+            const p = proj(s * 1.7, d), h = 70 * U * p.s, top = { x: p.x, y: p.y - h };
+            g.fillStyle = "#7A5230"; g.fillRect(p.x - 5 * U * p.s, top.y, 10 * U * p.s, h);
+            if (prev) { g.strokeStyle = "#2E9E57"; g.lineWidth = Math.max(1.5, 5 * U * p.s); g.beginPath(); g.moveTo(prev.x, prev.y); g.quadraticCurveTo((prev.x + top.x) / 2, Math.max(prev.y, top.y) + 18 * U * p.s + Math.sin(t / 300) * 6 * U * p.s, top.x, top.y); g.stroke(); }
+            prev = top;
+          }
+        }
+      } else if (z.k === "tobogan") {
+        g.fillStyle = "#E6F6FF"; quadSol(-1.7, 1.7, dA, dB); g.fill();
+        g.fillStyle = "#9FD0F5"; quadSol(-1.95, -1.7, dA, dB); g.fill(); quadSol(1.7, 1.95, dA, dB); g.fill();
+        g.fillStyle = "rgba(255,255,255,.9)";
+        for (let d = z.d0 + .5; d < z.d1; d += 1.7) { if (d < dA || d + .8 > dB) continue; quadSol(-1.2 + (d % 2) * .8, -.9 + (d % 2) * .8, d, d + .8); g.fill(); }
+      } else if (z.k === "canon") {
+        g.fillStyle = "#C9A15A"; quadSol(-1.6, 1.6, dA, dB); g.fill();
+        g.fillStyle = "rgba(120,80,40,.35)"; // empreintes géantes
+        for (let d = z.d0 + 2, i = 0; d < z.d1; d += 3.1, i++) { if (d < dA || d > dB) continue; const p = proj(i % 2 ? .9 : -.9, d), s = p.s * U; g.beginPath(); g.ellipse(p.x, p.y, 34 * s, 14 * s, 0, 0, 7); g.fill(); for (let k = -1; k <= 1; k++) { g.beginPath(); g.ellipse(p.x + k * 22 * s, p.y - 16 * s, 8 * s, 5 * s, 0, 0, 7); g.fill(); } }
+        for (const s of [-1, 1]) { // les murs du canyon
+          const a = proj(s * 1.75, dA), b = proj(s * 1.75, dB), ha = 320 * U * a.s, hb = 320 * U * b.s;
+          g.fillStyle = "#C46B3E"; g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.lineTo(b.x, b.y - hb); g.lineTo(a.x + s * 60 * U, a.y - ha); g.closePath(); g.fill();
+          g.strokeStyle = "#E39A62"; g.lineWidth = Math.max(1, 4 * U * a.s);
+          for (const f of [.25, .5, .75]) { g.beginPath(); g.moveTo(a.x, a.y - ha * f); g.lineTo(b.x, b.y - hb * f); g.stroke(); }
+        }
+      } else if (z.k === "tunel") {
+        g.fillStyle = "#F6C9A8"; quadSol(-1.6, 1.6, dA, dB); g.fill();
+      }
+    }
+  }
+
+  function dessinerDecor(o) {
+    if (cacheDecor(o.d)) return;
+    const p = proj(o.c, o.d), s = p.s * U;
+    if (o.m === "selva") { g.fillStyle = "#8A5A2E"; g.fillRect(p.x - 8 * s, p.y - 110 * s, 16 * s, 110 * s); g.fillStyle = "#2E9E57"; g.beginPath(); g.arc(p.x, p.y - 120 * s, 50 * s, 0, 7); g.fill(); g.fillStyle = "#F08A1C"; g.beginPath(); g.arc(p.x - 18 * s, p.y - 108 * s, 8 * s, 0, 7); g.fill(); }
+    else if (o.m === "mar") { g.strokeStyle = "#2E9E57"; g.lineWidth = 8 * s; g.lineCap = "round"; g.beginPath(); g.moveTo(p.x, p.y); g.quadraticCurveTo(p.x + 20 * s, p.y - 50 * s, p.x, p.y - 100 * s); g.stroke(); g.fillStyle = "#F28AB2"; g.beginPath(); g.arc(p.x + 20 * s, p.y - 10 * s, 14 * s, 0, 7); g.fill(); }
+    else if (o.m === "polos") { g.fillStyle = "#3E6E99"; g.beginPath(); g.moveTo(p.x, p.y - 120 * s); g.lineTo(p.x + 40 * s, p.y); g.lineTo(p.x - 40 * s, p.y); g.fill(); g.fillStyle = "#fff"; g.beginPath(); g.moveTo(p.x, p.y - 120 * s); g.lineTo(p.x + 16 * s, p.y - 72 * s); g.lineTo(p.x - 16 * s, p.y - 72 * s); g.fill(); }
+    else { g.strokeStyle = "#7A5230"; g.lineWidth = 9 * s; g.beginPath(); g.moveTo(p.x, p.y); g.lineTo(p.x, p.y - 90 * s); g.stroke(); g.fillStyle = "#6FA83A"; g.beginPath(); g.ellipse(p.x, p.y - 100 * s, 60 * s, 20 * s, 0, 0, 7); g.fill(); }
+  }
+
+  function dessinerItem(m, x, y, r) {
+    const W = MONDES[m];
+    g.fillStyle = W.couleur; g.beginPath();
+    if (m === "polos" || m === "gigantes") { g.moveTo(x, y - r * 1.3); g.lineTo(x + r, y); g.lineTo(x, y + r * 1.3); g.lineTo(x - r, y); g.closePath(); } else g.arc(x, y, r, 0, 7);
+    g.fill(); g.stroke();
+    if (m === "selva") { g.fillStyle = "#2E9E57"; g.beginPath(); g.ellipse(x + r * .35, y - r * 1.05, r * .45, r * .22, -.5, 0, 7); g.fill(); }
+    g.fillStyle = "rgba(255,255,255,.7)"; g.beginPath(); g.arc(x - r * .35, y - r * .35, r * .28, 0, 7); g.fill();
+  }
+
+  function dessinerObjet(o, t) {
+    const p = proj(o.c, o.d), s = p.s * U, W = MONDES[o.m];
+    g.strokeStyle = "#1E2A44"; g.lineWidth = Math.max(1, 3 * s); g.lineJoin = "round"; g.lineCap = "round";
+    if (o.t === "item") {
+      const chute = o.chute ? Math.max(0, o.d - 4) * 22 * U : 0;
+      dessinerItem(o.m, p.x, p.y - 34 * s + Math.sin(t / 200 + o.d) * 4 * s - chute, 16 * s);
+    } else if (o.t === "obst") {
+      const w = 110 * s, h = 62 * s, x = p.x - w / 2, y = p.y - h;
+      if (W.obst === "tronco") { g.fillStyle = "#A8743F"; rect(x, y + h * .3, w, h * .7, 14 * s); g.fill(); g.stroke(); g.fillStyle = "#D9A56A"; g.beginPath(); g.ellipse(x + w - 10 * s, y + h * .65, 10 * s, h * .33, 0, 0, 7); g.fill(); g.stroke(); }
+      else if (W.obst === "hielo") { g.fillStyle = "#BFE3FA"; rect(x, y, w, h, 10 * s); g.fill(); g.stroke(); g.fillStyle = "rgba(255,255,255,.8)"; rect(x + 8 * s, y + 8 * s, w * .2, h * .55, 5 * s); g.fill(); }
+      else if (W.obst === "coral") { g.fillStyle = "#F28AB2"; for (const [dx, hh] of [[-.3, .7], [0, 1], [.3, .8]]) { rect(p.x + dx * w - 14 * s, p.y - h * hh, 28 * s, h * hh, 12 * s); g.fill(); g.stroke(); } }
+      else { g.fillStyle = "#9C6B3F"; g.beginPath(); g.moveTo(x, p.y); g.lineTo(x + w * .15, y + h * .3); g.lineTo(x + w * .5, y); g.lineTo(x + w * .85, y + h * .25); g.lineTo(x + w, p.y); g.closePath(); g.fill(); g.stroke(); }
+    } else if (o.t === "turbo") { // flèches au sol
+      for (let k = 0; k < 3; k++) {
+        const a = proj(o.c - .38, o.d + k * .55), b = proj(o.c, o.d + k * .55 + .45), c = proj(o.c + .38, o.d + k * .55), m2 = proj(o.c, o.d + k * .55 + .2);
+        g.fillStyle = (Math.floor(t / 150) + k) % 3 === 0 ? "#FFF3B0" : "#F2B90F";
+        g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.lineTo(c.x, c.y); g.lineTo(m2.x, m2.y); g.closePath(); g.fill(); g.lineWidth = Math.max(1, 2 * s); g.stroke();
+      }
+    } else if (o.t === "etoile" || o.t === "aimant") {
+      const y = p.y - 40 * s + Math.sin(t / 180) * 5 * s, k = 24 * s;
+      g.fillStyle = "rgba(242,185,15,.35)"; g.beginPath(); g.arc(p.x, y, k * (1.7 + Math.sin(t / 120) * .15), 0, 7); g.fill();
+      g.fillStyle = "#fff"; g.beginPath(); g.arc(p.x, y, k * 1.25, 0, 7); g.fill(); g.stroke();
+      if (o.t === "etoile") { g.fillStyle = "#F2B90F"; g.beginPath(); for (let i = 0; i < 10; i++) { const a = i * Math.PI / 5 - Math.PI / 2, rr = i % 2 ? k * .42 : k * .9; g.lineTo(p.x + Math.cos(a) * rr, y + Math.sin(a) * rr); } g.closePath(); g.fill(); g.stroke(); }
+      else { g.strokeStyle = "#E0453F"; g.lineWidth = 9 * s; g.lineCap = "butt"; g.beginPath(); g.arc(p.x, y + 2 * s, k * .55, Math.PI, 0); g.stroke(); g.strokeStyle = "#C9D6F5"; g.beginPath(); g.moveTo(p.x - k * .55, y + 2 * s); g.lineTo(p.x - k * .55, y + 12 * s); g.moveTo(p.x + k * .55, y + 2 * s); g.lineTo(p.x + k * .55, y + 12 * s); g.stroke(); g.lineCap = "round"; }
+    } else if (o.t === "vague") {
+      const y = p.y - 10 * s; g.fillStyle = "#3FB8E8"; g.beginPath(); g.moveTo(p.x - 55 * s, p.y); g.quadraticCurveTo(p.x - 40 * s, y - 50 * s, p.x + 10 * s, y - 55 * s); g.quadraticCurveTo(p.x + 30 * s, y - 30 * s, p.x + 10 * s, y - 25 * s); g.quadraticCurveTo(p.x + 40 * s, y - 20 * s, p.x + 55 * s, p.y); g.closePath(); g.fill(); g.stroke();
+      g.strokeStyle = "#fff"; g.lineWidth = 4 * s; g.beginPath(); g.moveTo(p.x - 30 * s, y - 25 * s); g.quadraticCurveTo(p.x - 10 * s, y - 45 * s, p.x + 8 * s, y - 45 * s); g.stroke();
+    } else if (o.t === "oeuf") {
+      const r = 34 * s, y = p.y - r * 1.2 + Math.sin(t / 150 + o.d) * 2 * s;
+      g.fillStyle = "#FFF6E0"; g.beginPath(); g.ellipse(p.x, y, r, r * 1.25, Math.sin(t / 200) * .12, 0, 7); g.fill(); g.stroke();
+      g.fillStyle = "#2E9E57"; for (const [dx, dy, rr] of [[-.4, -.3, .2], [.3, .1, .25], [-.1, .6, .18], [.35, -.6, .14]]) { g.beginPath(); g.arc(p.x + dx * r, y + dy * r, rr * r, 0, 7); g.fill(); }
+    } else if (o.t === "arcade") { // arche de corail du tunnel
+      const a = proj(-1.85, o.d), b = proj(1.85, o.d), h = 250 * U * a.s, cx = (a.x + b.x) / 2, rx = (b.x - a.x) / 2, cy = a.y - h * .55;
+      for (const [col, lw] of [["#1E2A44", 30], [Math.round(o.d / 2.6) % 2 ? "#F28AB2" : "#F5A25D", 24]]) {
+        g.strokeStyle = col; g.lineWidth = lw * s; g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(a.x, cy); g.ellipse(cx, cy, rx, h * .45, 0, Math.PI, 0); g.lineTo(b.x, b.y); g.stroke();
+      }
+      g.fillStyle = "#fff"; for (const f of [.2, .5, .8]) { const ang = Math.PI + f * Math.PI; g.beginPath(); g.arc(cx + Math.cos(ang) * rx, cy + Math.sin(ang) * h * .45, 5 * s, 0, 7); g.fill(); }
+    } else if (o.t === "porte") { // la porte d'un nouveau monde
+      const N = MONDES[o.m], a = proj(-1.9, o.d), b = proj(1.9, o.d), h = 230 * U * a.s, pw = 22 * U * a.s;
+      g.fillStyle = N.bord; g.lineWidth = Math.max(1, 4 * U * a.s);
+      rect(a.x - pw / 2, a.y - h, pw, h, 6 * U * a.s); g.fill(); g.stroke(); rect(b.x - pw / 2, b.y - h, pw, h, 6 * U * a.s); g.fill(); g.stroke();
+      const bh = 54 * U * a.s; g.fillStyle = "#F2B90F"; rect(a.x - pw, a.y - h - bh * .6, b.x - a.x + pw * 2, bh, 14 * U * a.s); g.fill(); g.stroke();
+      g.fillStyle = "#1E2A44"; g.font = `900 ${Math.max(6, 30 * U * a.s)}px Lexend, system-ui, sans-serif`; g.textAlign = "center"; g.textBaseline = "middle";
+      g.fillText(N.titre, (a.x + b.x) / 2, a.y - h - bh * .1);
+      for (let i = 0; i < 7; i++) { g.fillStyle = ARC[i % 6]; g.beginPath(); g.arc(a.x + (b.x - a.x) * i / 6, a.y - h - bh * .6, 7 * U * a.s, 0, 7); g.fill(); }
+    }
+  }
+
+  // ---- Le héros : il penche, rebondit, s'écrase un peu, soulève de la poussière ----
+  function dessinerHeros(t, dt) {
+    heros.vis += (heros.c - heros.vis) * Math.min(1, dt * 14);
+    const fv = vitesse() / 9;
+    const avant = Math.sin(heros.pas); heros.pas += dt * 8 * Math.max(.6, fv);
+    const pr = proj(heros.vis, 0), r = 40 * U * heros.taille;
+    let bond = DOUX ? 0 : Math.abs(Math.sin(heros.pas)) * 9 * U;
+    if (heros.sautT > 0) { heros.h = Math.sin(Math.PI * (1 - heros.sautT / .7)) * 80 * U; bond = 0; } else heros.h = 0;
+    if (heros.rebond > 0) bond += Math.sin(heros.rebond / .35 * Math.PI) * 30 * U;
+    const auSol = heros.h < 2 && bond < 2;
+    if (!DOUX && Math.sign(avant) !== Math.sign(Math.sin(heros.pas)) && heros.h < 2) poussiere(pr.x, pr.y, fv > 1.2 ? 2 : 1, MONDES[M].cote === "#FFFFFF" ? "rgba(220,235,255,.9)" : "rgba(255,255,255,.65)");
+    if (auSol && !heros.solAvant && heros.h === 0 && heros.sautT <= 0) poussiere(pr.x, pr.y, 5);
+    heros.solAvant = auSol;
+    const haut = heros.h + bond;
+    // ombre
+    g.fillStyle = "rgba(0,0,0,.18)"; g.beginPath(); g.ellipse(pr.x, pr.y, r * .9 * (1 - Math.min(.5, haut / (160 * U))), 8 * U, 0, 0, 7); g.fill();
+    // vague sous les géants
+    if (olaT > 0) { g.fillStyle = "rgba(63,184,232,.85)"; g.beginPath(); g.ellipse(pr.x, pr.y - 4 * U, r * 1.6, 16 * U + Math.sin(t / 90) * 3 * U, 0, 0, 7); g.fill(); g.strokeStyle = "#fff"; g.lineWidth = 3 * U; g.stroke(); }
+    // traînée quand il fonce
+    if ((turboT > 0 || superT > 0 || F === "rapide") && !DOUX) {
+      for (let k = 3; k >= 1; k--) { g.globalAlpha = .12 * (4 - k); g.fillStyle = superT > 0 ? "#F2B90F" : turboT > 0 ? "#FFF3B0" : "#fff"; g.beginPath(); g.arc(pr.x - (heros.c - heros.vis) * 30 * U * k, pr.y - r - haut + k * 14 * U, r * (1 - k * .08), 0, 7); g.fill(); }
+      g.globalAlpha = 1;
+    }
+    const ecrase = DOUX ? 0 : (bond / (9 * U) - .5) * .12;
+    const rotation = (heros.c - heros.vis) * .45 + (heros.boing > 0 ? Math.sin(heros.boing * 20) * .4 : 0) + (heros.sautT > 0 ? (1 - heros.sautT / .7) * Math.PI * 2 * (F === "sauteur" ? 1 : 0) : 0);
+    const anneau = superT > 0 ? "arc" : turboT > 0 ? "#F2B90F" : aimantT > 0 ? "#E0453F" : olaT > 0 ? "#3FB8E8" : F === "carapace" ? "#2E9E57" : "#FFFFFF";
+    // L'animal détouré (choisi par Kevin le 25 nov.) ; le halo au sol remplace l'anneau. Le rond ne sert que si le sprite n'est pas encore chargé.
+    if (imagePrete(heros.sprite)) {
+      const hS = 100 * U * heros.taille, pieds = pr.y - haut;
+      if (anneau !== "#FFFFFF") { g.fillStyle = anneau === "arc" ? ARC[Math.floor(t / 120) % 6] : anneau; g.globalAlpha = .55; g.beginPath(); g.ellipse(pr.x, pr.y, hS * .55, 14 * U, 0, 0, 7); g.fill(); g.globalAlpha = 1; }
+      dessinerSprite(g, heros.sprite, A.n, pr.x, pieds, hS, { vers: heros.vers, ecrase: 1 + ecrase, rotation, ombre: false });
+      return { x: pr.x, y: pieds - hS * .5, r };
+    }
+    g.save(); g.translate(pr.x, pr.y - r - haut);
+    g.rotate(rotation);
+    g.scale(1 - ecrase, 1 + ecrase);
+    dessinerRond(g, heros.img, A, 0, 0, r, { anneau, t });
+    g.restore();
+    return { x: pr.x, y: pr.y - r - haut, r };
+  }
+
+  // Les liens de l'aimant (tentacule, langue, pinces) vers les trésors attirés
+  function dessinerLiens(ph) {
+    if (F !== "aimant") return;
+    g.strokeStyle = LIEN[A.n] || "#B05BE0"; g.lineCap = "round";
+    for (const o of objets) {
+      if (!o.tire || o.pris || o.d < 0) continue;
+      const p = proj(o.c, o.d), y = p.y - 34 * U * p.s;
+      g.lineWidth = 7 * U * Math.max(.5, p.s); g.beginPath(); g.moveTo(ph.x, ph.y); g.quadraticCurveTo((ph.x + p.x) / 2 + 30 * U, (ph.y + y) / 2 - 30 * U, p.x, y); g.stroke();
+      g.fillStyle = g.strokeStyle; g.beginPath(); g.arc(p.x, y, 7 * U * p.s, 0, 7); g.fill();
+    }
+  }
+
+  // ---- Effets d'écran : traits de vitesse, bulles du tunnel, poussière, textes ----
+  function effets(dt, t) {
+    const fv = vitesse() / 9, cx = L / 2, cy = HOR;
+    const taux = DOUX ? 0 : Math.max(0, fv - 1.05) * 40 + (F === "rapide" ? 4 : 0);
+    for (let i = 0; i < taux * dt * 3; i++) { let a; do { a = Math.random() * Math.PI * 2; } while (Math.abs(a - Math.PI / 2) < .5); traits.push({ a, r: (60 + Math.random() * 120) * U, t: 1 }); }
+    g.strokeStyle = "rgba(255,255,255,.75)"; g.lineCap = "round";
+    for (let i = traits.length - 1; i >= 0; i--) {
+      const k = traits[i]; k.r += dt * 900 * U * fv; k.t -= dt * 2.2;
+      if (k.t <= 0 || k.r > L * 1.2) { traits.splice(i, 1); continue; }
+      g.globalAlpha = k.t * .8; g.lineWidth = 3 * U; g.beginPath(); g.moveTo(cx + Math.cos(k.a) * k.r, cy + Math.sin(k.a) * k.r); g.lineTo(cx + Math.cos(k.a) * (k.r + 60 * U * fv), cy + Math.sin(k.a) * (k.r + 60 * U * fv)); g.stroke();
+    }
+    g.globalAlpha = 1;
+    if (dansZone("tunel") && Math.random() < dt * (DOUX ? 3 : 12)) fumees.push({ x: Math.random() * L, y: H, vx: 0, vy: -2.5 * U, r: (5 + Math.random() * 9) * U, t: 1.6, c: "bulle" });
+    for (let i = fumees.length - 1; i >= 0; i--) {
+      const f = fumees[i]; f.x += f.vx; f.y += f.vy; f.t -= dt * 1.8;
+      if (f.c !== "bulle") f.r += dt * 18 * U; else f.x += Math.sin(t / 200 + i) * .6;
+      if (f.t <= 0) { fumees.splice(i, 1); continue; }
+      g.globalAlpha = Math.min(1, f.t); g.beginPath(); g.arc(f.x, f.y, f.r, 0, 7);
+      if (f.c === "bulle") { g.strokeStyle = "rgba(255,255,255,.9)"; g.lineWidth = 2 * U; g.stroke(); } else { g.fillStyle = f.c; g.fill(); }
+    }
+    g.globalAlpha = 1;
+    eclats.dessiner(g, dt, { gravite: .35 * U });
+    g.textAlign = "center"; g.textBaseline = "middle"; g.lineJoin = "round";
+    for (let i = pops.length - 1; i >= 0; i--) {
+      const p = pops[i]; p.y -= dt * 70 * U; p.t -= dt * 1.1;
+      if (p.t <= 0) { pops.splice(i, 1); continue; }
+      const z = 1 + Math.max(0, p.t - .8) * 2;
+      g.globalAlpha = Math.min(1, p.t * 2); g.font = `900 ${p.taille * U * z}px Lexend, system-ui, sans-serif`;
+      g.strokeStyle = "#1E2A44"; g.lineWidth = 6 * U; g.strokeText(p.txt, p.x, p.y); g.fillStyle = p.c; g.fillText(p.txt, p.x, p.y);
+    }
+    g.globalAlpha = 1;
+    if (flashT > 0) { g.fillStyle = `rgba(255,255,255,${Math.min(.7, flashT * 1.6)})`; g.fillRect(-20, -20, L + 40, H + 40); }
+  }
+
+  // ---- Les contacts ----
+  function contacts() {
+    for (let i = objets.length - 1; i >= 0; i--) {
+      const o = objets[i];
+      if (o.d < -1.5 || o.pris || o.casse) { objets.splice(i, 1); continue; }
+      if (o.t === "porte") { if (o.d < .2 && !o.passe) { o.passe = true; entrerMonde(o.m); } continue; }
+      if (o.t === "arcade") continue;
+      if (o.d > .6 || o.d < -.4 || o.touche) continue;
+      const voisin = Math.abs(o.c - heros.c) <= .4 || (olaT > 0 && o.t === "item");
+      if (!voisin) continue;
+      const p = proj(o.c, o.d);
+      if (o.t === "item") ramasser(o, p);
+      else if (o.t === "etoile") { o.pris = true; superT = 6; fete("¡Súper carrera!", "¡Súper carrera! ¡Rompe todo!"); }
+      else if (o.t === "aimant") { o.pris = true; aimantT = 8; fete("¡Imán!", "¡Imán! Los tesoros vienen solos."); }
+      else if (o.t === "vague") { o.pris = true; olaT = 6; fete("¡A surfear!", "¡Una ola! ¡Recoge los tres caminos!"); }
+      else if (o.t === "turbo") { o.pris = true; turboT = 2.6; sonTurbo(); vibrer(20); secousse = .8; pop(p.x, p.y - 60 * U, "¡Turbo!", "#F2B90F", 30); }
+      else if (o.t === "oeuf") {
+        o.pris = true; sonCasse(); sonFanfare(); vibrer([20, 30, 20]); secousse = .7; flashT = .25;
+        confettis(p.x, p.y - 40 * U, 20); eclats.jaillir(p.x, p.y - 40 * U, "#FFF6E0", 10, 4 * U, 1.5 * U);
+        for (let k = 0; k < 5; k++) ajouter({ t: "item", c: [-1, 0, 1][k % 3], d: .8 + k * .5, m: o.m });
+        pop(p.x, p.y - 90 * U, "¡Huevo gigante!", "#F2B90F", 28); if (Math.random() < .6) dire("¡Un huevo gigante! ¡Sorpresa!");
+      } else if (o.t === "obst") {
+        if (superT > 0 || F === "casseur") {
+          o.casse = true; sonCasse(); vibrer(25); secousse = 1; pop(p.x, p.y - 80 * U, "¡CRAC!", "#fff", 34);
+          eclats.jaillir(p.x, p.y - 30 * U, MONDES[o.m].obst === "hielo" ? "#BFE3FA" : MONDES[o.m].obst === "coral" ? "#F28AB2" : "#9C6B3F", 14, 4 * U, 1.3 * U);
+          for (let k = 0; k < 3; k++) ajouter({ t: "item", c: o.c, d: 1 + k * .8, m: o.m });
+        } else if (heros.h > 25 * U) { o.touche = true; pop(p.x, p.y - 100 * U, "¡Hop!", "#fff", 26); }
+        else if (F === "carapace") { o.touche = true; heros.rebond = .35; sonClonc(); vibrer(15); pop(p.x, p.y - 90 * U, "¡Clonc!", "#2E9E57", 32); confettis(p.x, p.y - 40 * U, 6); }
+        else { o.touche = true; heros.boing = .6; SONS_JEU.boing(); vibrer(15); pop(p.x, p.y - 90 * U, "¡Boing!", "#fff", 28); if (Math.random() < .4) dire(rireAuHasard()); }
+      }
+    }
+  }
+
+  // ---- Boucle ----
+  let avant = performance.now();
+  function boucle(t) {
+    const dtReel = Math.min(.04, (t - avant) / 1000); avant = t;
+    const dt = dtReel * (ralentiT > 0 ? .35 : 1); tJeu += dtReel;
+    // le voyage : un nouveau monde toutes les 40 s, un passage spécial et une pluie de trésors dans chacun
+    const ecoule = Date.now() - debut, e = Math.floor(ecoule / ETAPE), frac = (ecoule % ETAPE) / ETAPE;
+    if (e > etape) { etape = e; evPassage = evPluie = false; nouveauMonde(); }
+    if (!evPassage && frac > .3 && !zones.some((z) => z.d1 > 0)) { evPassage = true; passage(); }
+    if (!evPluie && frac > .72 && !zones.some((z) => z.d1 > 0)) { evPluie = true; pluie(); }
+
+    const v = vitesse() * dt; avance += v;
+    superT = Math.max(0, superT - dt); aimantT = Math.max(0, aimantT - dt); turboT = Math.max(0, turboT - dt); olaT = Math.max(0, olaT - dt);
+    ralentiT = Math.max(0, ralentiT - dtReel); flashT = Math.max(0, flashT - dtReel); secousse = Math.max(0, secousse - dtReel * 2.5);
+    heros.boing = Math.max(0, heros.boing - dt); heros.sautT = Math.max(0, heros.sautT - dt); heros.rebond = Math.max(0, heros.rebond - dt);
+    heros.taille += ((superT > 0 ? 1.35 : F === "geant" ? 1.12 : 1) - heros.taille) * Math.min(1, dt * 5);
+    fondu = Math.min(1, fondu + dtReel * 1.2);
+    prochain -= v; if (prochain <= 0) semer();
+    for (const o of decor) { o.d -= v; if (o.d < -1) { o.d += LOIN + 1; o.c = Math.random() < .5 ? -2 : 2; o.m = mSem; } }
+    for (const o of bords) { o.d -= v; if (o.d < PRES) { o.d += LOIN - PRES; o.c = (Math.random() < .5 ? -1 : 1) * (1.75 + Math.random() * 1.2); } }
+    for (const z of zones) {
+      z.d0 -= v; z.d1 -= v;
+      if (!z.dit && z.d0 < 3 && z.k !== "pluie") { z.dit = true; const P = PASSAGES[z.k]; bulle(P.nom, 2400, true); dire(P.voix); sonBien(); }
+      if (!z.dit && z.k === "pluie" && z.d0 < 14) { z.dit = true; bulle("¡Lluvia de tesoros!", 2200, true); dire("¡Lluvia de tesoros!"); sonFanfare(); }
+    }
+    for (let i = zones.length - 1; i >= 0; i--) if (zones[i].d1 < PRES - 1) zones.splice(i, 1);
+    if (dansZone("tobogan") && !dejaWiii) { dejaWiii = true; secousse = .6; }
+    if (!dansZone("tobogan")) dejaWiii = false;
+    // l'aimant : les trésors des couloirs voisins viennent vers lui
+    const portee = aimantT > 0 ? 3 : F === "aimant" ? 1.01 : 0;
+    for (const o of objets) {
+      o.d -= v;
+      if (portee && o.t === "item" && !o.pris && o.d < 6 && o.d > -.3 && Math.abs(o.c - heros.c) <= portee) { if (Math.abs(o.c - heros.c) > .3) o.tire = true; o.c += (heros.c - o.c) * Math.min(1, dt * 6); }
+    }
+    // le sauteur saute tout seul par-dessus les obstacles
+    if (F === "sauteur" && heros.sautT <= 0 && superT <= 0 && objets.some((o) => o.t === "obst" && !o.touche && Math.abs(o.c - heros.c) < .4 && o.d > .5 && o.d < 1.5 + vitesse() * .04)) { heros.sautT = .7; SONS_JEU.saut(); }
+
+    g.save();
+    if (secousse > 0 && !DOUX) g.translate((Math.random() - .5) * secousse * 10 * U, (Math.random() - .5) * secousse * 8 * U);
+    dessinerFond(mPrec);
+    if (fondu < 1) { g.globalAlpha = fondu; dessinerFond(M); g.globalAlpha = 1; } else mPrec = M;
+    dessinerZones(t);
+    // du plus loin au plus près
+    const tout = [...decor.map((o) => ({ o, dec: 1 })), ...objets.map((o) => ({ o }))].sort((a, b) => b.o.d - a.o.d);
+    let pHeros = null;
+    for (const { o, dec } of tout) {
+      if (!pHeros && o.d < 0) pHeros = dessinerHeros(t, dt);
+      if (o.d > LOIN || o.d < -1.2) continue;
+      if (dec) dessinerDecor(o); else if (!o.pris && !o.casse && !(o.t === "obst" && o.touche && o.d < -.2)) dessinerObjet(o, t);
+    }
+    if (!pHeros) pHeros = dessinerHeros(t, dt);
+    dessinerLiens(pHeros);
+    contacts();
+    effets(dtReel, t);
+    g.restore();
+    if (!fini) requestAnimationFrame(boucle);
+  }
+
+  // ---- Minuteur : arrêt automatique, « ¡Último minuto! » 30 s avant, puis la ballena ----
+  const minuteur = () => minuteurJeu({ barre: $("barre"), bandeau: $("ultimo"), annonce: "¡Último minuto! ¡Corre, corre!",
+    surFin: () => { fini = true; finDePause($("fin"), "¡Qué carrera!", `${nomMaj(A)} ha recogido ${items} tesoros y ha visitado ${Math.min(4, visites)} ${visites > 1 ? "mundos" : "mundo"}.`); } });
+  if (TEST_RAPIDE) window.caminos = {
+    get items() { return items; }, get heros() { return heros; }, get objets() { return objets.length; }, get monde() { return M; },
+    get zones() { return zones.map((z) => z.k); }, get famille() { return F; }, get visites() { return visites; },
+    passage: () => passage(), pluie: () => pluie(), mondeSuivant: () => nouveauMonde(),
+  };
+})();
+</script>
+</body>
+</html>
