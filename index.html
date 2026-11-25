@@ -33,11 +33,16 @@
   .pasos .num{width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,.14);display:grid;place-items:center;font-size:15px;font-weight:800;flex:none}
   .pasos svg{width:24px;height:24px;color:var(--encre-douce);flex:none}
   .pasos li.fin,.pasos li.fin svg{color:var(--jaune)}
+  /* Plus de 4 étapes : 2 colonnes, pour que « Esta semana » reste dans le premier écran */
+  .pasos.deux{display:grid;grid-template-columns:1fr 1fr;gap:9px 10px;grid-auto-flow:column}
+  .pasos.deux li{font-size:16px;gap:7px;line-height:1.15;min-width:0}
+  .pasos.deux .num{width:24px;height:24px;font-size:13px}
+  .pasos.deux svg{width:20px;height:20px}
   /* Esta semana : les thèmes cochés par papá y mamá */
-  .semaine{margin-top:12px;background:rgba(255,255,255,.1);border-radius:20px;padding:12px 14px}
-  .semaine b{display:block;font-size:18px;font-weight:800;margin-bottom:8px}
+  .semaine{margin-top:14px;background:var(--page-fonce);border:3px solid var(--jaune);border-radius:20px;padding:12px 14px 14px}
+  .semaine b{display:block;font-size:21px;font-weight:850;color:var(--jaune);margin-bottom:8px}
   .semaine ul{list-style:none;display:flex;flex-direction:column;gap:6px}
-  .semaine li{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:17px;font-weight:700}
+  .semaine li{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:18px;font-weight:700}
   .semaine li span{flex:none;font-size:15px;font-weight:700;padding:3px 10px;border-radius:12px;background:rgba(255,255,255,.12);color:var(--encre-douce)}
   .semaine li span:empty{display:none}
   .semaine li span.hoy{background:var(--jaune);color:var(--marine)}
@@ -102,6 +107,9 @@
     const L = LECONS[ID];
     $("bandeau").textContent = L.titre;
     $("nbPasos").textContent = `Hoy: ${L.etapes.length} ${L.etapes.length > 1 ? "pasos" : "paso"} y tu sobre`;
+    const lignes = L.etapes.length + 1;
+    $("pasos").classList.toggle("deux", lignes > 5);
+    $("pasos").style.gridTemplateRows = lignes > 5 ? `repeat(${Math.ceil(lignes / 2)}, auto)` : "";
     $("pasos").innerHTML = [...L.etapes, { type: "fin" }].map((e, i) =>
       `<li class="${e.type === "fin" ? "fin" : ""}"><span class="num">${e.type === "fin" ? "★" : i + 1}</span>${ICONES[Deberes.ICONE[e.type]]}${Deberes.nomEtape(e)}</li>`).join("");
     const sem = Deberes.semaine(ID);
