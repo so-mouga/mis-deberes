@@ -1,0 +1,442 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>El pequeño minero</title>
+<link rel="stylesheet" href="style.css?v=10">
+<link rel="stylesheet" href="pause.css?v=1">
+<style>
+  .hud h1{font-size:20px}
+  .total{display:flex;align-items:center;gap:4px;font-size:20px;font-weight:900;background:#fff;color:var(--marine);border-radius:16px;padding:3px 10px 3px 6px;font-variant-numeric:tabular-nums}
+  .total svg{width:22px;height:22px}
+  .total.pop{animation:pop .35s var(--ease)}
+  @keyframes pop{50%{transform:scale(1.25)}}
+  .mine{flex:1;position:relative;margin-top:12px;border-radius:22px;overflow:hidden;background:#8EC5FF;box-shadow:0 6px 0 var(--page-ombre)}
+  .mine canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
+  .couche{position:absolute;left:50%;top:14px;transform:translateX(-50%);z-index:3;background:rgba(30,42,68,.78);color:#fff;font-weight:900;font-size:19px;
+    padding:6px 16px;border-radius:14px;white-space:nowrap;pointer-events:none;animation:arrive .4s var(--ease)}
+  .couche[hidden]{display:none}
+  /* L'œuf qui éclot : l'animal sort en grand */
+  .eclos{position:absolute;inset:0;z-index:4;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:rgba(30,42,68,.45)}
+  .eclos[hidden]{display:none}
+  .eclos .ani{width:168px;height:168px;animation:sort .6s var(--ease)}
+  .eclos b{font-size:28px;font-weight:900;background:#fff;color:var(--marine);border-radius:18px;padding:4px 16px;box-shadow:0 5px 0 rgba(0,0,0,.25);animation:sort .6s var(--ease) .12s both}
+  @keyframes sort{from{transform:scale(.2) translateY(40px);opacity:0}}
+  @media (prefers-reduced-motion:reduce){.eclos .ani,.eclos b,.total.pop{animation:none}}
+</style>
+</head>
+<body>
+<main class="jeu">
+  <div class="hud">
+    <h1>El pequeño minero</h1><div class="temps"><i id="barre"></i></div>
+    <span class="total" id="total"><svg viewBox="0 0 24 24"><path d="M6 3h12l4 6-10 12L2 9z" fill="#3FB8E8" stroke="#1E2A44" stroke-width="2" stroke-linejoin="round"/><path d="M2 9h20M9 3 7 9l5 12 5-12-2-6" fill="none" stroke="#1E2A44" stroke-width="1.5" stroke-linejoin="round"/></svg><span id="nb">0</span></span>
+  </div>
+  <div class="ultimo" id="ultimo" hidden>¡Último minuto!</div>
+  <section class="mine" id="mine">
+    <canvas id="toile"></canvas>
+    <div class="couche" id="couche" hidden></div>
+    <div class="eclos" id="eclos" hidden><span class="ani"><img id="eclosImg" alt=""></span><b id="eclosNom"></b></div>
+  </section>
+</main>
+<section class="ecran-fin" id="fin" hidden></section>
+
+<script src="commun.js?v=10"></script>
+<script src="animaux.js?v=12"></script>
+<script src="sync.js?v=5"></script>
+<script src="pause-commun.js?v=1"></script>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const DOUX = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const COLS = 7, CIEL = 2; // 2 rangées de ciel, puis l'herbe
+
+  // ---- Les matériaux : couleur, dureté (1 ou 2 touches), son ----
+  const MAT = {
+    herbe:  { fond: "#9C6B3F", haut: "#58B947", tache: "#7E5330", dur: 1, son: "herbe" },
+    terre:  { fond: "#A8743F", tache: "#8A5A2E", dur: 1, son: "terre", trou: "#6E4A2C" },
+    pierre: { fond: "#9AA5B8", tache: "#7D889C", dur: 2, son: "pierre", trou: "#5E6880" },
+    roche:  { fond: "#7B62B8", tache: "#634C9C", dur: 2, son: "roche", trou: "#4C3D80" },
+    cristal:{ fond: "#7FD6E8", tache: "#B9F0FA", dur: 1, son: "cristal", trou: "#3E6E99" },
+  };
+  const COUCHES = [
+    { des: 0,  mat: "terre",   nom: null },
+    { des: 7,  mat: "pierre",  nom: "¡Piedra! Dos golpes" },
+    { des: 16, mat: "roche",   nom: "¡Roca mágica!" },
+    { des: 26, mat: "cristal", nom: "¡Cueva de cristales!" },
+  ];
+  const coucheDe = (r) => { const d = r - CIEL; let c = COUCHES[0]; for (const k of COUCHES) if (d >= k.des) c = k; return c; };
+
+  // ---- Les trésors ----
+  const GEMMES = ["#E0453F", "#3FB8E8", "#2E9E57", "#B05BE0", "#F08A1C"];
+  const FOSSILES = [
+    { t: "caracola", dit: "¡Un fósil de caracola!" },
+    { t: "hueso", dit: "¡Un hueso de dinosaurio!" },
+    { t: "pez", dit: "¡Un pez de piedra, de hace millones de años!" },
+    { t: "hoja", dit: "¡Una hoja fósil!" },
+  ];
+  // Les œufs : ses animaux à lui s'il en a (avec image), sinon ceux qui ont une image
+  // Le tiranosaurio ne sort pas d'un œuf : on le trouve en fossile, une fois par partie
+  const POUR_OEUFS = mesAnimaux(2).filter((n) => n !== 18);
+  let trexVu = false;
+  let pileOeufs = [];
+  const prochainAnimal = () => { if (!pileOeufs.length) pileOeufs = melange(POUR_OEUFS.slice()); return animalN(pileOeufs.pop()); };
+  const IMGS = chargerImages(AVEC_IMAGE);
+
+  function tresorAuHasard(r) {
+    const d = r - CIEL, x = Math.random();
+    if (d >= 10 && x < .015) return { k: "trex" };
+    if (d >= 2 && x < .035) return { k: "oeuf" };
+    if (d >= 3 && x < .065) return { k: "fosile", f: FOSSILES[Math.floor(Math.random() * FOSSILES.length)] };
+    if (x < .11) return { k: "pepite" };
+    const pGemme = coucheDe(r).mat === "cristal" ? .45 : .2;
+    if (x < pGemme) return { k: "gemme", c: GEMMES[Math.floor(Math.random() * GEMMES.length)] };
+    return null;
+  }
+
+  // ---- Le terrain, créé au fur et à mesure qu'on descend ----
+  const monde = []; // monde[r][c] = { mat, coups, tresor, taches } ou null (vide)
+  function rangee(r) {
+    while (monde.length <= r) {
+      const rr = monde.length, ligne = [];
+      for (let c = 0; c < COLS; c++) {
+        if (rr < CIEL) { ligne.push(null); continue; }
+        const mat = rr === CIEL ? "herbe" : coucheDe(rr).mat;
+        const taches = Array.from({ length: 3 }, () => [Math.random(), Math.random(), .5 + Math.random() * .6]);
+        ligne.push({ mat, coups: 0, tresor: rr === CIEL ? null : tresorAuHasard(rr), taches, scint: Math.random() * 6 });
+      }
+      monde.push(ligne);
+    }
+    return monde[r];
+  }
+  const bloc = (c, r) => (c < 0 || c >= COLS || r < 0) ? undefined : rangee(r)[c];
+  const ouvert = (c, r) => r >= 0 && c >= 0 && c < COLS && bloc(c, r) === null;
+  const atteignable = (c, r) => ouvert(c - 1, r) || ouvert(c + 1, r) || ouvert(c, r - 1) || ouvert(c, r + 1);
+
+  // ---- Toile ----
+  const toile = $("toile"), g = toile.getContext("2d"), mine = $("mine");
+  let L, H, TAILLE, DPR;
+  function dimensionner() {
+    DPR = Math.min(devicePixelRatio || 1, 2);
+    L = mine.clientWidth; H = mine.clientHeight;
+    toile.width = L * DPR; toile.height = H * DPR;
+    g.setTransform(DPR, 0, 0, DPR, 0, 0);
+    TAILLE = L / COLS;
+  }
+  addEventListener("resize", dimensionner); dimensionner();
+
+  // ---- Le petit mineur (casque jaune, salopette orange) ----
+  const mineur = { c: 3, r: CIEL - 1, x: 3, y: CIEL - 1, de: null, t: 1, dir: 1, coup: 0, rire: 0 };
+  let camY = 0, secousse = 0, profondeurMax = 0;
+  const eclats = [], volants = [];
+
+  // ---- Sons courts, différents par matériau ----
+  const bruit = bruitFiltre;
+  const SONS = {
+    herbe:   (fin) => { bruit(2600, .8, .12, .5); if (fin) note(300, 180, .12, .18, "triangle"); },
+    terre:   (fin) => { bruit(500, 1, .16, .9); if (fin) note(180, 110, .14, .25, "triangle"); },
+    pierre:  (fin) => { bruit(1800, 3, fin ? .2 : .1, .8); note(fin ? 420 : 640, fin ? 260 : 600, .08, .12, "square"); },
+    roche:   (fin) => { bruit(1100, 4, fin ? .22 : .1, .8); note(fin ? 330 : 520, fin ? 200 : 480, .1, .14, "square"); },
+    cristal: (fin) => { note(1320, 1760, .18, .14); setTimeout(() => note(1760, 2350, .2, .1), 60); },
+  };
+  const sonGemme = () => { note(1175, 1568, .14, .14); setTimeout(() => note(1568, 2093, .18, .12), 80); };
+  const vibre = vibrer;
+
+  // ---- Toucher un bloc ----
+  let tresors = 0, dernierUy = 0, enPause = false, fini = false;
+  const trouves = []; let depuisOeuf = 0, depuisTresor = 0;
+
+  toile.addEventListener("pointerdown", (e) => {
+    if (fini) return;
+    audio().resume?.();
+    if (enPause) { fermerEclos(); return; }
+    const b = toile.getBoundingClientRect();
+    const c = Math.floor((e.clientX - b.left) / TAILLE), r = Math.floor((e.clientY - b.top + camY) / TAILLE);
+    const bl = bloc(c, r);
+    if (!bl) return;
+    mineur.dir = c >= mineur.c ? 1 : -1; mineur.coup = 1;
+    if (!atteignable(c, r)) {
+      // Pas d'échec : le mineur rigole, et les blocs qu'on peut casser brillent
+      mineur.rire = 1; bl.secoue = 1; note(500, 700, .12, .08, "triangle");
+      montrerProches = 1;
+      if (Date.now() - dernierUy > 5000) { dernierUy = Date.now(); dire("¡Jiji! Ese está lejos. Pica al lado del agujero."); }
+      return;
+    }
+    const M = MAT[bl.mat];
+    bl.coups++;
+    const cx = (c + .5) * TAILLE, cy = (r + .5) * TAILLE - camY;
+    if (bl.coups < M.dur) {
+      SONS[M.son](false); vibre(12); secouer(3);
+      jaillir(cx, cy, M.fond, 5, .6);
+      return;
+    }
+    // Cassé !
+    SONS[M.son](true); vibre(25); secouer(6);
+    jaillir(cx, cy, M.fond, 12, 1); jaillir(cx, cy, M.tache, 6, .8);
+    rangee(r)[c] = null;
+    sauterVers(c, r);
+    if (r - CIEL > profondeurMax) { profondeurMax = r - CIEL; annoncerCouche(r); }
+    // Toujours de quoi trouver : un trésor au moins tous les 5 blocs, un œuf au moins tous les 14
+    depuisOeuf++; depuisTresor++;
+    let t = bl.tresor;
+    if (t?.k === "trex" && trexVu) t = { k: "fosile", f: FOSSILES[1] };
+    if (!trexVu && r - CIEL >= 18 && t?.k !== "oeuf") t = { k: "trex" }; // garanti dans la roca mágica
+    if (!t && depuisOeuf >= 14 && r - CIEL >= 1) t = { k: "oeuf" };
+    else if (!t && depuisTresor >= 5) t = { k: "gemme", c: GEMMES[Math.floor(Math.random() * GEMMES.length)] };
+    if (t) trouver(t, c, r);
+  });
+
+  let montrerProches = 0;
+  function secouer(f) { if (!DOUX) secousse = Math.max(secousse, f); }
+  function jaillir(x, y, couleur, n, force) {
+    if (DOUX) n = Math.ceil(n / 3);
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2, v = (2 + Math.random() * 5) * force;
+      eclats.push({ x, y: y + camY, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 3 * force, t: 1, s: 4 + Math.random() * 6, c: couleur, rot: Math.random() * 6 });
+    }
+  }
+  function sauterVers(c, r) {
+    mineur.de = { x: mineur.x, y: mineur.y }; mineur.c = c; mineur.r = r; mineur.t = 0;
+  }
+
+  // ---- Trouver un trésor ----
+  function trouver(t, c, r) {
+    depuisTresor = 0;
+    const x = (c + .5) * TAILLE, y = (r + .5) * TAILLE;
+    if (t.k === "oeuf") { depuisOeuf = 0; eclore(t, x, y); return; }
+    if (t.k === "trex") { trexVu = true; fossileTrex(x, y); return; }
+    const v = { ...t, x, y, t: 0 };
+    volants.push(v);
+    if (t.k === "gemme") sonGemme();
+    if (t.k === "pepite") { sonGemme(); if (Math.random() < .3) dire("¡Oro!"); }
+    if (t.k === "fosile") { sonBien(); dire(t.f.dit); }
+  }
+  function compter() {
+    tresors++; $("nb").textContent = tresors;
+    const tot = $("total"); tot.classList.remove("pop"); void tot.offsetWidth; tot.classList.add("pop");
+  }
+
+  // L'œuf : il tremble, craque, et un de ses animaux sort, avec son nom dit à voix haute
+  let minuterieEclos;
+  function eclore(t, x, y) {
+    const a = prochainAnimal();
+    const oeuf = { k: "oeufVu", x, y, t: 0, fixe: true, tremble: 0 };
+    volants.push(oeuf);
+    note(700, 900, .1, .1); setTimeout(() => note(800, 1000, .1, .1), 250); setTimeout(() => note(900, 1200, .1, .12), 500);
+    dire("¡Un huevo!");
+    setTimeout(() => {
+      volants.splice(volants.indexOf(oeuf), 1);
+      jaillir(x, y - camY, "#FFF6E0", 14, 1); jaillir(x, y - camY, "#F2B90F", 6, .7);
+      sonBien(); vibre([20, 40, 20]);
+      trouves.push(a.n); compter();
+      $("eclosImg").src = imgAnimal(a.n); $("eclosNom").textContent = a.es;
+      $("eclos").hidden = false; enPause = true;
+      dire(`¡Es ${a.es}!`);
+      clearTimeout(minuterieEclos); minuterieEclos = setTimeout(fermerEclos, 2600);
+    }, 750);
+  }
+  // Le grand fossile : le tiranosaurio, le roi des dinosaurios
+  function fossileTrex(x, y) {
+    jaillir(x, y - camY, "#EFE3C8", 16, 1.1); jaillir(x, y - camY, "#8A6A3C", 8, .8);
+    secouer(10); vibre([30, 50, 30]);
+    note(180, 120, .3, .25, "triangle"); setTimeout(sonBien, 250);
+    trouves.push(18); compter();
+    $("eclosImg").src = imgAnimal(18); $("eclosNom").textContent = "¡Fósil de tiranosaurio!";
+    $("eclos").hidden = false; enPause = true;
+    dire("¡Un fósil de tiranosaurio! ¡El rey de los dinosaurios!");
+    clearTimeout(minuterieEclos); minuterieEclos = setTimeout(fermerEclos, 3200);
+  }
+  function fermerEclos() { clearTimeout(minuterieEclos); $("eclos").hidden = true; enPause = false; }
+
+  let minuterieCouche;
+  function annoncerCouche(r) {
+    const k = coucheDe(r);
+    if (!k.nom || r - CIEL !== k.des) return;
+    const el = $("couche"); el.textContent = k.nom; el.hidden = false;
+    dire(k.nom.replace("! ", "!. "));
+    clearTimeout(minuterieCouche); minuterieCouche = setTimeout(() => (el.hidden = true), 2500);
+  }
+
+  // ---- Dessin ----
+  function arrondi(x, y, l, h, r) { g.beginPath(); if (g.roundRect) g.roundRect(x, y, l, h, r); else g.rect(x, y, l, h); } // vieux téléphones : carrés simples
+
+  function dessinerBloc(bl, c, r, x, y, s) {
+    const M = MAT[bl.mat], p = s * .06, rayon = s * .16;
+    let dx = 0;
+    if (bl.secoue) { dx = Math.sin(bl.secoue * 30) * 4 * bl.secoue; bl.secoue = Math.max(0, bl.secoue - .06); }
+    x += dx;
+    g.fillStyle = M.fond; arrondi(x + p, y + p, s - 2 * p, s - 2 * p, rayon); g.fill();
+    if (bl.mat === "herbe") {
+      g.fillStyle = M.haut; arrondi(x + p, y + p, s - 2 * p, s * .34, [rayon, rayon, 4, 4]); g.fill();
+      g.beginPath(); for (let i = 0; i < 4; i++) { const bx = x + p + (i + .5) * (s - 2 * p) / 4; g.moveTo(bx - 5, y + p + s * .32); g.lineTo(bx, y + p + s * .46); g.lineTo(bx + 5, y + p + s * .32); } g.fill();
+    }
+    // reflet en haut, ombre en bas : des blocs « bonbons »
+    g.fillStyle = "rgba(255,255,255,.18)"; arrondi(x + p + 4, y + p + 3, s - 2 * p - 8, s * .12, 6); g.fill();
+    g.fillStyle = "rgba(0,0,0,.12)"; arrondi(x + p, y + s - p - s * .12, s - 2 * p, s * .12, [0, 0, rayon, rayon]); g.fill();
+    g.fillStyle = M.tache;
+    for (const [tx, ty, ts] of bl.taches) {
+      g.beginPath();
+      if (bl.mat === "cristal") { const cx = x + s * (.25 + tx * .5), cy = y + s * (.3 + ty * .45), k = s * .09 * ts; g.moveTo(cx, cy - k * 2); g.lineTo(cx + k, cy); g.lineTo(cx, cy + k * 2); g.lineTo(cx - k, cy); }
+      else g.arc(x + s * (.22 + tx * .56), y + s * (bl.mat === "herbe" ? .55 + ty * .25 : .3 + ty * .5), s * .06 * ts, 0, 7);
+      g.fill();
+    }
+    // fissure après le 1er coup
+    if (bl.coups > 0) {
+      g.strokeStyle = "rgba(30,42,68,.7)"; g.lineWidth = 3; g.lineCap = "round"; g.lineJoin = "round";
+      g.beginPath(); g.moveTo(x + s * .5, y + s * .15); g.lineTo(x + s * .42, y + s * .4); g.lineTo(x + s * .6, y + s * .55); g.lineTo(x + s * .45, y + s * .85);
+      g.moveTo(x + s * .6, y + s * .55); g.lineTo(x + s * .82, y + s * .62); g.moveTo(x + s * .42, y + s * .4); g.lineTo(x + s * .2, y + s * .35); g.stroke();
+    }
+    // un éclat brille de temps en temps là où un trésor se cache
+    if (bl.tresor) {
+      const ph = (performance.now() / 1000 + bl.scint) % 3;
+      if (ph < .6) { const k = Math.sin(ph / .6 * Math.PI); etoile(x + s * .72, y + s * .3, s * .14 * k, bl.tresor.k === "oeuf" ? "#FFE680" : "#fff"); }
+    }
+    // les blocs qu'on ne peut pas encore atteindre sont un peu plus sombres
+    if (!atteignable(c, r)) { g.fillStyle = "rgba(20,20,50,.22)"; arrondi(x + p, y + p, s - 2 * p, s - 2 * p, rayon); g.fill(); }
+    else if (montrerProches > 0) { g.strokeStyle = `rgba(255,230,128,${montrerProches})`; g.lineWidth = 4; arrondi(x + p + 2, y + p + 2, s - 2 * p - 4, s - 2 * p - 4, rayon); g.stroke(); }
+  }
+
+  function etoile(x, y, k, couleur) {
+    if (k <= 0) return;
+    g.fillStyle = couleur; g.beginPath();
+    for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4, rr = i % 2 ? k * .35 : k; g.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr); }
+    g.fill();
+  }
+
+  function dessinerTresor(v, x, y, s) {
+    g.save(); g.translate(x, y);
+    g.strokeStyle = "#1E2A44"; g.lineWidth = 2.5; g.lineJoin = "round"; g.lineCap = "round";
+    if (v.k === "gemme") {
+      g.fillStyle = v.c; g.beginPath(); g.moveTo(-s * .3, -s * .1); g.lineTo(-s * .15, -s * .28); g.lineTo(s * .15, -s * .28); g.lineTo(s * .3, -s * .1); g.lineTo(0, s * .3); g.closePath(); g.fill(); g.stroke();
+      g.fillStyle = "rgba(255,255,255,.55)"; g.beginPath(); g.moveTo(-s * .15, -s * .22); g.lineTo(0, -s * .22); g.lineTo(-s * .08, -s * .08); g.fill();
+    } else if (v.k === "pepite") {
+      g.fillStyle = "#F2B90F"; g.beginPath(); g.moveTo(-s * .28, s * .12); g.quadraticCurveTo(-s * .3, -s * .2, -s * .05, -s * .2); g.quadraticCurveTo(s * .3, -s * .26, s * .3, s * .05); g.quadraticCurveTo(s * .25, s * .25, 0, s * .22); g.quadraticCurveTo(-s * .2, s * .26, -s * .28, s * .12); g.fill(); g.stroke();
+      g.fillStyle = "#FFF1BF"; g.beginPath(); g.arc(-s * .08, -s * .06, s * .06, 0, 7); g.fill();
+    } else if (v.k === "fosile") {
+      g.fillStyle = "#EFE3C8"; g.beginPath(); g.arc(0, 0, s * .34, 0, 7); g.fill(); g.stroke();
+      g.strokeStyle = "#8A6A3C"; g.lineWidth = 3;
+      g.beginPath();
+      if (v.f.t === "caracola") { for (let a = 0; a < 14; a += .3) { const rr = s * .025 * a; g.lineTo(Math.cos(a) * rr * .9, Math.sin(a) * rr * .9); } }
+      else if (v.f.t === "hueso") { g.moveTo(-s * .16, s * .12); g.lineTo(s * .16, -s * .12); g.stroke(); g.beginPath(); for (const [bx, by] of [[-.2, .08], [-.12, .18], [.2, -.08], [.12, -.18]]) { g.moveTo(s * bx + 4, s * by); g.arc(s * bx, s * by, 4, 0, 7); } }
+      else if (v.f.t === "pez") { g.moveTo(-s * .2, 0); g.lineTo(s * .14, 0); g.moveTo(s * .14, 0); g.lineTo(s * .24, -s * .1); g.moveTo(s * .14, 0); g.lineTo(s * .24, s * .1); for (let i = -1; i <= 1; i++) { g.moveTo(s * i * .08, -s * .1); g.lineTo(s * i * .08, s * .1); } g.moveTo(-s * .2, 0); g.arc(-s * .2, 0, 3, 0, 7); }
+      else { g.moveTo(0, s * .22); g.lineTo(0, -s * .2); for (let i = 0; i < 3; i++) { const yy = s * (.1 - i * .1); g.moveTo(0, yy); g.lineTo(-s * .14, yy - s * .08); g.moveTo(0, yy); g.lineTo(s * .14, yy - s * .08); } }
+      g.stroke();
+    } else if (v.k === "oeufVu") {
+      const tr = Math.sin(performance.now() / 40) * .18 * Math.min(1, v.t * 2);
+      g.rotate(tr);
+      g.fillStyle = "#FFF6E0"; g.beginPath(); g.ellipse(0, 0, s * .26, s * .34, 0, 0, 7); g.fill(); g.stroke();
+      g.fillStyle = "#F2B90F"; for (const [px, py] of [[-.1, -.12], [.1, .02], [-.06, .16]]) { g.beginPath(); g.arc(s * px, s * py, s * .05, 0, 7); g.fill(); }
+      if (v.t > .4) { g.beginPath(); g.moveTo(-s * .24, -s * .02); g.lineTo(-s * .1, -s * .1); g.lineTo(0, 0); g.lineTo(s * .1, -s * .1); g.lineTo(s * .24, -s * .02); g.stroke(); }
+    }
+    g.restore();
+  }
+
+  function dessinerMineur(x, y, s) {
+    g.save(); g.translate(x, y);
+    const rit = mineur.rire > 0 ? Math.sin(mineur.rire * 25) * .25 : 0;
+    g.rotate(rit); g.scale(mineur.dir, 1);
+    g.strokeStyle = "#1E2A44"; g.lineWidth = 2.5; g.lineJoin = "round"; g.lineCap = "round";
+    // pioche (elle tape quand on touche)
+    g.save(); g.translate(s * .2, s * .05); g.rotate(-.9 + mineur.coup * 1.6);
+    g.fillStyle = "#9C6B3F"; g.fillRect(-2, -s * .32, 5, s * .34); g.strokeRect(-2, -s * .32, 5, s * .34);
+    g.fillStyle = "#C9D6F5"; g.beginPath(); g.moveTo(-s * .16, -s * .28); g.quadraticCurveTo(0, -s * .42, s * .16, -s * .28); g.quadraticCurveTo(0, -s * .35, -s * .16, -s * .28); g.fill(); g.stroke();
+    g.restore();
+    // corps
+    g.fillStyle = "#F08A1C"; arrondi(-s * .2, s * .02, s * .4, s * .34, 10); g.fill(); g.stroke();
+    g.fillStyle = "#2347A8"; g.fillRect(-s * .1, s * .08, s * .2, s * .1);
+    // tête
+    g.fillStyle = "#F5C9A0"; g.beginPath(); g.arc(0, -s * .1, s * .19, 0, 7); g.fill(); g.stroke();
+    g.fillStyle = "#1E2A44"; g.beginPath(); g.arc(s * .07, -s * .11, 2.6, 0, 7); g.arc(-s * .05, -s * .11, 2.6, 0, 7); g.fill();
+    g.beginPath(); if (mineur.rire > 0) { g.arc(s * .01, -s * .02, s * .06, 0, Math.PI); g.fill(); } else { g.arc(s * .01, -s * .05, s * .06, .2, Math.PI - .2); g.stroke(); }
+    // casque jaune et sa lampe
+    g.fillStyle = "#F2B90F"; g.beginPath(); g.arc(0, -s * .14, s * .21, Math.PI, 0); g.closePath(); g.fill(); g.stroke();
+    g.fillStyle = "#FFF6B0"; g.beginPath(); g.arc(s * .13, -s * .24, s * .06, 0, 7); g.fill(); g.stroke();
+    g.restore();
+  }
+
+  function dessinerFond(y0) {
+    // ciel, puis le fond creusé de chaque couche (jamais noir)
+    for (let r = Math.floor(camY / TAILLE); r * TAILLE - camY < H; r++) {
+      const y = r * TAILLE - camY;
+      if (r < CIEL) continue;
+      g.fillStyle = MAT[coucheDe(r).mat].trou || MAT.terre.trou;
+      g.fillRect(0, y, L, TAILLE + 1);
+    }
+  }
+
+  let avant = performance.now();
+  function boucle(t) {
+    const dt = Math.min(.05, (t - avant) / 1000); avant = t;
+    // caméra : le mineur reste vers le tiers haut
+    const viseY = Math.max(0, (mineur.y + .5) * TAILLE - H * .38);
+    camY += (viseY - camY) * Math.min(1, dt * 5);
+    // ciel
+    g.fillStyle = "#8EC5FF"; g.fillRect(0, 0, L, H);
+    g.save();
+    if (secousse > .2) { g.translate((Math.random() - .5) * secousse, (Math.random() - .5) * secousse); secousse *= .82; }
+    dessinerFond();
+    // soleil et nuage, tout en haut
+    if (camY < CIEL * TAILLE) {
+      g.fillStyle = "#F2B90F"; g.beginPath(); g.arc(L - TAILLE * .8, TAILLE * .6 - camY, TAILLE * .38, 0, 7); g.fill();
+      g.fillStyle = "#fff"; g.beginPath(); for (const [cx, cr] of [[.9, .28], [1.25, .36], [1.6, .28]]) g.arc(TAILLE * cx, TAILLE * .7 - camY, TAILLE * cr, 0, 7); g.fill();
+    }
+    const r0 = Math.max(0, Math.floor(camY / TAILLE)), r1 = Math.ceil((camY + H) / TAILLE);
+    for (let r = r0; r <= r1; r++) {
+      const ligne = rangee(r);
+      for (let c = 0; c < COLS; c++) if (ligne[c]) dessinerBloc(ligne[c], c, r, c * TAILLE, r * TAILLE - camY, TAILLE);
+    }
+    if (montrerProches > 0) montrerProches = Math.max(0, montrerProches - dt * .8);
+    // mineur
+    if (mineur.t < 1) {
+      mineur.t = Math.min(1, mineur.t + dt * 4.5);
+      const k = mineur.t;
+      mineur.x = mineur.de.x + (mineur.c - mineur.de.x) * k;
+      mineur.y = mineur.de.y + (mineur.r - mineur.de.y) * k - Math.sin(k * Math.PI) * .5;
+    }
+    mineur.coup = Math.max(0, mineur.coup - dt * 6);
+    mineur.rire = Math.max(0, mineur.rire - dt * 1.4);
+    const rebond = DOUX ? 0 : Math.sin(t / 260) * 2;
+    dessinerMineur((mineur.x + .5) * TAILLE, (mineur.y + .55) * TAILLE - camY + rebond, TAILLE);
+    // trésors qui volent vers le compteur
+    for (let i = volants.length - 1; i >= 0; i--) {
+      const v = volants[i]; v.t += dt;
+      let x = v.x, y = v.y - camY, s = TAILLE;
+      if (!v.fixe) {
+        const k = Math.max(0, (v.t - .55) / .5); // un petit moment en place, puis il file
+        if (k === 0) { s = TAILLE * (1 + Math.sin(Math.min(1, v.t / .3) * Math.PI) * .3); y -= Math.sin(Math.min(1, v.t / .55) * Math.PI) * 8; }
+        else { const tx = L - 30, ty = -20, e = k * k; x += (tx - x) * e; y += (ty - y) * e; s = TAILLE * (1 - .5 * k); }
+        if (k >= 1) { volants.splice(i, 1); compter(); trouves.push(v.k); continue; }
+      }
+      if (v.t < .6) etoile(x, y, TAILLE * .5 * (1 - v.t / .6), "rgba(255,255,255,.7)");
+      dessinerTresor(v, x, y, s);
+    }
+    // éclats
+    for (let i = eclats.length - 1; i >= 0; i--) {
+      const e = eclats[i]; e.x += e.vx; e.y += e.vy; e.vy += .45; e.t -= dt * 1.6; e.rot += .2;
+      if (e.t <= 0) { eclats.splice(i, 1); continue; }
+      g.save(); g.globalAlpha = Math.min(1, e.t * 2); g.translate(e.x, e.y - camY); g.rotate(e.rot); g.fillStyle = e.c; g.fillRect(-e.s / 2, -e.s / 2, e.s, e.s); g.restore();
+    }
+    g.restore();
+    if (!fini) requestAnimationFrame(boucle);
+  }
+  requestAnimationFrame(boucle);
+
+  // ---- Minuteur : barre sans chiffres, « ¡Último minuto! » 30 s avant la fin ----
+  minuteurJeu({ barre: $("barre"), bandeau: $("ultimo"), annonce: "¡Último minuto! Busca un último tesoro.", surFin: () => terminer() });
+
+  function terminer() {
+    fini = true; fermerEclos();
+    const animaux = trouves.filter((x) => typeof x === "number" && x !== 18).length;
+    let phrase = animaux
+      ? `Has encontrado ${tresors} tesoros y ${animaux === 1 ? "un huevo" : animaux + " huevos"} de animales.`
+      : `Has encontrado ${tresors} tesoros.`;
+    if (trexVu) phrase += " ¡Y un tiranosaurio!";
+    finDePause($("fin"), "¡Qué gran minero!", phrase);
+  }
+
+  if (TEST_RAPIDE) window.minero = { get camY() { return camY; }, get taille() { return TAILLE; }, mineur, bloc }; // pour les tests (?duree=N)
+  dire("¡El pequeño minero! Toca los bloques para cavar. ¡Busca tesoros y huevos!");
+})();
+</script>
+</body>
+</html>

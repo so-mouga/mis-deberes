@@ -28,6 +28,19 @@
   .animales .derniers{display:flex}
   .animales .derniers .cromo{width:48px;padding:3px;margin-left:-12px;border-radius:8px}
   .animales .derniers .cromo .provisoire{font-size:9px}
+  /* Les jeux (25 nov. 2026) : ouverts après les devoirs du jour, ou par un adulte (un calcul) */
+  .centre .jugar{min-height:72px;font-size:28px}
+  .cerrado{display:flex;align-items:center;justify-content:center;gap:10px;min-height:56px;border-radius:28px;border:3px dashed rgba(255,255,255,.3);color:var(--encre-douce);font-size:18px;font-weight:700;background:none;font-family:inherit;width:100%}
+  .cerrado svg{width:22px;height:22px;flex:none}
+  .gate{position:fixed;inset:0;z-index:10;background:rgba(15,25,60,.92);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:24px;text-align:center}
+  .gate[hidden]{display:none}
+  .gate h2{font-size:24px;font-weight:850}
+  .gate p{font-size:17px;color:var(--encre-douce);max-width:28ch;line-height:1.35}
+  .gate .calc{font-size:34px;font-weight:900}
+  .gate input{width:150px;font:inherit;font-size:32px;font-weight:800;text-align:center;border-radius:16px;border:3px solid #fff;padding:8px;color:var(--marine)}
+  .gate input.faux{animation:non .35s}
+  @keyframes non{25%{transform:translateX(-8px)}75%{transform:translateX(8px)}}
+  .gate .gros{max-width:320px}
 </style>
 </head>
 <body>
@@ -43,10 +56,21 @@
       <p>≈ 10 min · y luego tu sobre <span class="mini-sobre" aria-hidden="true"></span></p>
     </section>
     <a class="gros" id="go">¡A los deberes!</a>
+    <div id="juegos"></div>
   </div>
 
   <a class="animales" href="album-animales.html"><b>Mis animales<small id="compte"></small></b><span class="derniers" id="derniers"></span></a>
 </main>
+
+<!-- Pour un adulte : ouvrir les jeux pour la journée (jour sans devoirs, week-end…). Un calcul que Dorian ne sait pas encore faire. -->
+<section class="gate" id="gate" hidden>
+  <h2>Para papá o mamá</h2>
+  <p>Los juegos se abren después de los deberes. Para abrirlos hoy, resuelve:</p>
+  <span class="calc" id="calc"></span>
+  <input id="rep" type="number" inputmode="numeric" autocomplete="off" aria-label="Resultado">
+  <button class="gros" id="valider">Abrir los juegos hoy</button>
+  <button class="gros clair" id="annuler">Cancelar</button>
+</section>
 
 <script src="commun.js?v=10"></script>
 <script src="lecons.js?v=11"></script>
@@ -54,6 +78,8 @@
 <script src="animaux.js?v=12"></script>
 <script src="sync.js?v=5"></script>
 <script src="deberes.js?v=5"></script>
+<script>const NE_PAS_VERROUILLER = true;</script>
+<script src="pause-commun.js?v=1"></script>
 <script>
   // La séance du jour est choisie par deberes.js (réglages des parents, contrôles, Repaso) ; ?lecon=X l'impose.
   const DEMANDEE = new URLSearchParams(location.search).get("lecon");
@@ -66,6 +92,33 @@
     mes.slice(-3).forEach((n) => $("derniers").append(cromoAnimal(ANIMAUX.find((a) => a.n === n), { noms: false })));
   }
   afficherAnimaux();
+
+  // Les jeux : « ¡A jugar! » une fois la séance du jour finie (ou ouverts par un adulte), sinon un bouton fermé.
+  const CADENAS = `<svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="2.5"/><path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="2.5"/></svg>`;
+  function afficherJuegos() {
+    $("juegos").innerHTML = juegosAbiertos()
+      ? `<a class="gros vert jugar" href="juegos.html">¡A jugar!</a>`
+      : `<button class="cerrado" id="cerrado">${CADENAS}Juegos: después de los deberes</button>`;
+    if ($("cerrado")) $("cerrado").addEventListener("click", ouvrirGate);
+  }
+  afficherJuegos();
+  let attendu;
+  function nouveauCalcul() {
+    const a = 6 + Math.floor(Math.random() * 4), b = 6 + Math.floor(Math.random() * 4), c = 11 + Math.floor(Math.random() * 30);
+    attendu = a * b + c;
+    $("calc").textContent = `${a} × ${b} + ${c} = ?`;
+    $("rep").value = "";
+  }
+  function ouvrirGate() {
+    dire("Los juegos se abren después de los deberes. ¡Primero, a los deberes!");
+    nouveauCalcul(); $("gate").hidden = false;
+  }
+  $("annuler").addEventListener("click", () => { $("gate").hidden = true; });
+  $("valider").addEventListener("click", () => {
+    if (+$("rep").value === attendu) { ouvrirJuegosHoy(); $("gate").hidden = true; afficherJuegos(); sonBien(); return; }
+    $("rep").classList.remove("faux"); void $("rep").offsetWidth; $("rep").classList.add("faux");
+    setTimeout(nouveauCalcul, 400);
+  });
 
   let ID;
   function afficher() {
@@ -87,7 +140,7 @@
       Sync.rafraichirAjustes().catch((err) => { console.warn("Ajustes:", err.message); return null; }),
       Sync.synchroniserProgreso(),
     ]).then(([a, p]) => {
-      if (p) { Deberes.reconstruireRepaso(); afficherAnimaux(); }
+      if (p) { Deberes.reconstruireRepaso(); afficherAnimaux(); afficherJuegos(); }
       if (a || p) afficher();
     });
   }

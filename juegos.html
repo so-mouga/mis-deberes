@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>¡Hora de jugar!</title>
+<link rel="stylesheet" href="style.css?v=10">
+<link rel="stylesheet" href="pause.css?v=1">
+<style>
+  html,body{touch-action:pan-y}
+  .salle{position:fixed;inset:0;display:flex;flex-direction:column;gap:14px;max-width:430px;margin:0 auto;padding:max(16px,env(safe-area-inset-top)) 16px max(16px,env(safe-area-inset-bottom))}
+  .tete{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .tete h1{font-size:30px;font-weight:900;letter-spacing:-.01em;transform:rotate(-1.5deg)}
+  .tete .rond{width:48px;height:48px}.tete .rond svg{width:24px;height:24px}
+  /* Pendant la pause entre deux séances : un défi physique de 30 s avant le choix (BRIEF règle 4) */
+  .defi{position:fixed;inset:0;z-index:5;background:var(--page);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;text-align:center;padding:24px}
+  .defi[hidden]{display:none}
+  .defi .ani{width:150px;height:150px;border-width:6px}
+  .defi h2{font-size:30px;font-weight:900;line-height:1.15;max-width:16ch}
+  .defi p{font-size:20px;font-weight:600;color:var(--encre-douce);max-width:24ch;line-height:1.35}
+  .defi .anneau{width:120px;height:120px;transform:rotate(-90deg)}
+  .defi .anneau circle{fill:none;stroke-width:10}
+  .jeux{flex:1;display:flex;flex-direction:column;gap:14px;min-height:0}
+  /* Une carte de jeu : grande, colorée, avec une petite scène animée et SON animal dedans */
+  .jeu-carte{position:relative;flex:1;min-height:0;display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:24px;text-align:left;color:var(--marine);
+    border:4px solid #fff;box-shadow:0 7px 0 rgba(0,0,0,.25),0 12px 20px rgba(0,0,0,.25);animation:entre .55s var(--ease) both;overflow:hidden}
+  .jeu-carte:nth-child(2){animation-delay:.1s}.jeu-carte:nth-child(3){animation-delay:.2s}
+  .jeu-carte:active{transform:translateY(5px) scale(.99);box-shadow:0 2px 0 rgba(0,0,0,.25)}
+  @keyframes entre{from{transform:translateY(30px) scale(.9);opacity:0}}
+  .scene{flex:none;width:112px;height:100%;max-height:120px;min-height:84px;position:relative}
+  .scene svg{width:100%;height:100%;overflow:visible}
+  .scene .ani{position:absolute;width:52px;height:52px;border-width:3px}
+  .jeu-carte b{display:block;font-size:24px;font-weight:900;line-height:1.05}
+  .jeu-carte small{display:block;font-size:15px;font-weight:700;margin-top:4px;opacity:.85;line-height:1.25}
+  .nuevo{position:absolute;top:8px;right:-30px;transform:rotate(35deg);background:var(--rouge);color:#fff;font-weight:900;font-size:13px;padding:3px 34px;box-shadow:0 2px 6px rgba(0,0,0,.3)}
+  /* Le prochain jeu, encore fermé : on montre ce qui arrive */
+  .bientot{display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:20px;background:rgba(255,255,255,.1);border:3px dashed rgba(255,255,255,.35)}
+  .bientot .cadenas{flex:none;width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.15);display:grid;place-items:center}
+  .bientot .cadenas svg{width:24px;height:24px}
+  .bientot p{font-size:15px;font-weight:700;color:var(--encre-douce);line-height:1.3}
+  .bientot p b{color:#fff}
+  .jauge{height:10px;border-radius:5px;background:rgba(255,255,255,.18);margin-top:6px;overflow:hidden}
+  .jauge i{display:block;height:100%;background:var(--jaune);border-radius:5px}
+  /* petites animations des scènes */
+  .saute{animation:saute 1.1s ease-in-out infinite}
+  @keyframes saute{50%{transform:translateY(-14px)}}
+  .monte{animation:monte 1.6s linear infinite}
+  @keyframes monte{from{transform:translateY(20px);opacity:0}30%{opacity:1}to{transform:translateY(-50px);opacity:0}}
+  .tape{transform-origin:70% 80%;animation:tape .7s ease-in-out infinite}
+  @keyframes tape{50%{transform:rotate(-35deg)}}
+  .defile{animation:defile .8s linear infinite}
+  @keyframes defile{from{transform:translateY(-10px)}to{transform:translateY(10px)}}
+  .flotte{animation:flotte 2.4s ease-in-out infinite}
+  @keyframes flotte{50%{transform:translateY(-6px) rotate(3deg)}}
+  @media (prefers-reduced-motion:reduce){.jeu-carte,.saute,.monte,.tape,.defile,.flotte{animation:none}}
+</style>
+</head>
+<body>
+<main class="salle">
+  <div class="tete"><h1>¡Hora de jugar!</h1><a class="rond" id="retour" aria-label="Volver"></a></div>
+  <section class="defi" id="defi" hidden></section>
+  <section class="jeux" id="jeux"></section>
+  <div class="bientot" id="bientot" hidden></div>
+</main>
+
+<script src="commun.js?v=10"></script>
+<script src="animaux.js?v=12"></script>
+<script src="sync.js?v=5"></script>
+<script src="pause-commun.js?v=1"></script>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const TR = 'stroke="#1E2A44" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"';
+
+  // Les jeux de l'appli (validés par Kevin), et à combien d'animaux dans l'album chacun s'ouvre.
+  // Le 25 nov. 2026 : tous ouverts dès le départ ; un jeu ajouté plus tard pourra avoir un palier (desde > 0, bandeau « ¡NUEVO! »).
+  // scene(n) : petite scène animée, avec un de SES animaux (n) quand le jeu en utilise un
+  const JEUX = [
+    { id: "burbujas", page: "burbujas.html", nom: "Cañón de burbujas", dit: "¡Libera a tus animales!", fond: "#CFE8FF", desde: 0,
+      scene: (n) => `<svg viewBox="0 0 112 110"><circle cx="70" cy="30" r="26" fill="rgba(255,255,255,.6)" stroke="#fff" stroke-width="3"/>
+        ${[0, 1, 2].map((i) => `<circle class="monte" style="animation-delay:${i * .5}s" cx="${30 + i * 8}" cy="80" r="6" fill="#fff" ${TR} stroke-width="2"/>`).join("")}
+        <rect x="18" y="78" width="22" height="26" rx="6" fill="#3F72CF" ${TR}/><path d="M8 108a21 21 0 0 1 42 0z" fill="#E0453F" ${TR}/></svg>
+        <span class="ani flotte" style="left:44px;top:4px">${img(n)}</span>` },
+    { id: "caminos", page: "tres-caminos.html", nom: "Tres caminos", dit: "¡Corre y recoge tesoros!", fond: "#CFF2DD", desde: 0,
+      scene: (n) => `<svg viewBox="0 0 112 110"><path d="M44 8h24l40 100H4z" fill="#B98A5A" ${TR}/>
+        <g class="defile">${[20, 50, 80].map((y) => `<rect x="${54 - y * .06}" y="${y}" width="${4 + y * .05}" height="12" rx="2" fill="#EFD08A"/>`).join("")}</g>
+        <circle cx="80" cy="40" r="6" fill="#F08A1C" ${TR} stroke-width="2"/></svg>
+        <span class="ani saute" style="left:30px;top:52px">${img(n)}</span>` },
+    { id: "minero", page: "minero.html", nom: "El pequeño minero", dit: "¡Cava y encuentra huevos!", fond: "#E9D3B8", desde: 0,
+      scene: () => `<svg viewBox="0 0 112 110">${[[8, 40], [40, 40], [72, 40], [8, 72], [72, 72]].map(([x, y]) => `<rect x="${x}" y="${y}" width="30" height="30" rx="6" fill="${y > 60 ? "#9AA5B8" : "#A8743F"}" ${TR} stroke-width="2"/>`).join("")}
+        <ellipse cx="55" cy="87" rx="10" ry="13" fill="#FFF6E0" ${TR} stroke-width="2"/>
+        <g class="tape"><rect x="72" y="2" width="6" height="34" rx="2" fill="#9C6B3F" ${TR} stroke-width="2"/><path d="M60 6q15-12 30 0q-15-6-30 0z" fill="#C9D6F5" ${TR} stroke-width="2"/></g></svg>` },
+    { id: "guardianes", page: "guardianes.html", nom: "Los guardianes", dit: "¡Cada animal tiene un poder!", fond: "#E4DDF7", desde: 0,
+      scene: (n) => `<svg viewBox="0 0 112 110"><rect x="0" y="92" width="112" height="18" fill="#D9B45A"/><path d="M60 92l10-20 12 4 8 16z" fill="#9C6B3F" ${TR} stroke-width="2"/>
+        <circle cx="36" cy="58" r="33" fill="none" stroke="#F2B90F" stroke-width="6" class="saute"/></svg>
+        <span class="ani saute" style="left:10px;top:32px">${img(n)}</span>` },
+  ];
+  const img = (n) => `<img src="${imgAnimal(n)}" alt="">`;
+  // Pas encore copiés dans l'appli (leur chantier est en cours) : on les ajoute ici avec « zsh album/outils/copier-jeux.sh <jeu> ».
+  const PAS_ENCORE = ["caminos"];
+
+  // Combien d'animaux il a (?animales=N pour essayer la maquette)
+  const P = new URLSearchParams(location.search);
+  const nbAnimaux = P.has("animales") ? +P.get("animales") : collection().length;
+  const ouverts = JEUX.filter((j) => nbAnimaux >= j.desde && !PAS_ENCORE.includes(j.id));
+  const prochain = JEUX.find((j) => nbAnimaux < j.desde);
+
+  // On propose 3 jeux, jamais toute la liste : le dernier débloqué (s'il est neuf), puis ceux qu'il n'a pas joués depuis longtemps
+  const CLE_JOUES = "dorian.juegos.jugados", CLE_VUS = "dorian.juegos.vistos";
+  const joues = (() => { try { return JSON.parse(localStorage.getItem(CLE_JOUES)) || {}; } catch { return {}; } })();
+  const vus = (() => { try { return JSON.parse(localStorage.getItem(CLE_VUS)) || []; } catch { return []; } })();
+  const neuf = ouverts.filter((j) => !vus.includes(j.id) && j.desde > 0).pop();
+  const autres = melange(ouverts.filter((j) => j !== neuf)).sort((a, b) => (joues[a.id] || 0) - (joues[b.id] || 0));
+  const proposes = [neuf, ...autres].filter(Boolean).slice(0, 3);
+  localStorage.setItem(CLE_VUS, JSON.stringify([...new Set([...vus, ...ouverts.map((j) => j.id)])]));
+
+  // Ses animaux, pour peupler les cartes
+  const mes = melange(mesAnimaux());
+  proposes.forEach((j, i) => {
+    const b = document.createElement("button"); b.className = "jeu-carte"; b.style.background = j.fond;
+    b.innerHTML = `<span class="scene">${j.scene(mes[i % mes.length])}</span><span><b>${j.nom}</b><small>${j.dit}</small></span>${j === neuf ? `<span class="nuevo">¡NUEVO!</span>` : ""}`;
+    b.addEventListener("click", () => jouer(j));
+    $("jeux").append(b);
+  });
+
+
+  // Ce qui arrive bientôt : envie de continuer l'album
+  if (prochain) {
+    const manque = prochain.desde - nbAnimaux;
+    $("bientot").hidden = false;
+    $("bientot").innerHTML = `<span class="cadenas"><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2" fill="none" stroke="#fff" stroke-width="2.5"/><path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="#fff" stroke-width="2.5"/></svg></span>
+      <div style="flex:1"><p>Con <b>${manque === 1 ? "1 animal más" : manque + " animales más"}</b>, se abre un juego nuevo.</p><div class="jauge"><i style="width:${Math.round(nbAnimaux / prochain.desde * 100)}%"></i></div></div>`;
+  }
+
+  const annoncer = () => dire(`¡Hora de jugar! ¿A qué quieres jugar? ${proposes.map((j) => j.nom).join(", o ")}.` + (neuf ? ` ¡Hay un juego nuevo: ${neuf.nom}!` : ""));
+
+  // Retour : à la séance si on vient de la pause (sans jouer, la pause continue là-bas), sinon à l'accueil
+  $("retour").innerHTML = ICONES.croix;
+  $("retour").href = EN_PAUSE ? `seance.html?lecon=${encodeURIComponent(EN_PAUSE)}&despues` : "index.html";
+
+  // Pendant la pause entre deux séances : d'abord un défi physique de 30 s, avec un de ses animaux (BRIEF règle 4).
+  // Depuis l'accueil (jeu libre après les devoirs), pas de défi.
+  const DEFIS = [
+    { a: 17, defi: "¡Salta como un león!", detail: "Salta y salta… ¡y ruge! ¡Grrr!" },
+    { a: 11, defi: "Camina como un oso polar", detail: "A cuatro patas, manos y pies en el suelo." },
+    { a: 18, defi: "¡Camina como un tiranosaurio!", detail: "Pasos grandes y fuertes, bracitos cortos. ¡Pum, pum!" },
+    { a: 7, defi: "Estírate como un perezoso", detail: "Brazos muy arriba, despacio, despacio…" },
+  ];
+  if (EN_PAUSE && !P.has("sindefi")) {
+    const d = DEFIS[Math.floor(Math.random() * DEFIS.length)], a = animalN(d.a), duree = TEST_RAPIDE ? 5000 : 30000;
+    const D = $("defi"); D.hidden = false;
+    D.innerHTML = `<span class="ani" style="background:${MILIEUX[a.m].fond}">${img(d.a)}</span><h2>${d.defi}</h2><p>${d.detail}</p>
+      <svg class="anneau" viewBox="0 0 120 120"><circle cx="60" cy="60" r="50" stroke="rgba(255,255,255,.15)"/><circle id="arcDefi" cx="60" cy="60" r="50" stroke="#F2B90F" stroke-linecap="round" stroke-dasharray="314" stroke-dashoffset="0"/></svg>`;
+    dire(`¡Primero, a moverse! ${d.defi} ${d.detail}`);
+    const debut = Date.now();
+    const tic = setInterval(() => {
+      const r = Math.max(0, duree - (Date.now() - debut));
+      $("arcDefi").style.strokeDashoffset = 314 * (1 - r / duree);
+      if (!r) { clearInterval(tic); sonBien(); D.hidden = true; annoncer(); }
+    }, 250);
+  } else annoncer();
+
+  function jouer(j) {
+    sonBien(); vibrer(15);
+    joues[j.id] = Date.now(); localStorage.setItem(CLE_JOUES, JSON.stringify(joues));
+    dire(j.nom);
+    setTimeout(() => { location.href = j.page + (EN_PAUSE ? `?pausa=${encodeURIComponent(EN_PAUSE)}` : "") + (TEST_RAPIDE ? (EN_PAUSE ? "&" : "?") + "duree=" + PARAMS_JEU.get("duree") : ""); }, 500);
+  }
+})();
+</script>
+</body>
+</html>

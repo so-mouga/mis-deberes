@@ -396,8 +396,10 @@ function descanso() {
   v.hidden = false;
   const min = Sync.pausa().minutos; // 5 ou 10 min, réglé par les parents
   v.innerHTML = `<div class="horloge"><svg viewBox="0 0 150 150"><circle cx="75" cy="75" r="68" stroke="rgba(255,255,255,.15)"/><circle id="arc" cx="75" cy="75" r="68" stroke="#F2B90F" stroke-linecap="round" stroke-dasharray="427" stroke-dashoffset="0"/></svg><span id="reste">${min}:00</span></div>
-    <h2>¡Descanso!</h2><p>Ahora: ${min} minutos de tu juego, o salta y muévete un poco. Te aviso cuando acabe.</p><a class="gros clair" href="album-animales.html">Ver mis animales</a>`;
-  dire(`¡Descanso! Ahora tienes ${min === 10 ? "diez" : "cinco"} minutos para tu juego. Te aviso cuando acabe.`);
+    <h2>¡Descanso!</h2><p>Ahora: ${min} minutos de descanso. ¿Jugamos?</p>
+    <a class="gros vert" href="juegos.html?pausa=${encodeURIComponent(ID)}">¡A jugar!</a><a class="gros clair" href="album-animales.html">Ver mis animales</a>`;
+  // « ¡A jugar! » : défi physique de 30 s, choix du jeu, jeu qui s'arrête seul, ballena, puis retour ici (&despues).
+  dire(`¡Descanso! Ahora tienes ${min === 10 ? "diez" : "cinco"} minutos. ¿Jugamos? Te aviso cuando acabe.`);
   // Une 2e séance, seulement proposée (jamais une 3e) : à la fin du minuteur, ou plus tôt avec « Ya he descansado ».
   const propo = Deberes.deuxiemeSeance(ID);
   let tic;
@@ -416,6 +418,17 @@ function descanso() {
       if (propo) proposer(propo); else dire("¡Fin del descanso! Deja el juego, ¿seguimos?");
     }
   }, 500);
+}
+
+// Retour d'un jeu de la pause (seance.html?lecon=ID&despues) : la 2e séance proposée, ou « ¡Hasta mañana! ».
+function apresLaPause() {
+  const v = $("voileFin");
+  v.hidden = false;
+  const propo = Deberes.deuxiemeSeance(ID);
+  if (propo) return proposer(propo);
+  v.innerHTML = `<h2>¡Muy bien, Dorian!</h2><p>Has terminado los deberes de hoy. ¡Hasta mañana!</p>
+    <a class="gros" href="index.html">Volver</a><a class="gros clair" href="album-animales.html">Ver mis animales</a>`;
+  dire("¡Muy bien, Dorian! Has terminado los deberes de hoy. ¡Hasta mañana!");
 }
 
 // « ¿Hacemos también el inglés hoy? » : Dorian peut toujours dire non, sans rien perdre.
@@ -454,6 +467,7 @@ Sync.synchroniserProgreso(); // les cromos des autres téléphones : le sobre ne
 if (DEMO) { window.dire = async () => {}; demoFaite = true; if (PARAMS.has("pause")) setTimeout(() => $("pause").click(), 300); }
 
 (async () => {
+  if (PARAMS.has("despues")) return apresLaPause();
   vider();
   const depart = DEMO ? +PARAMS.get("etape") || 0 : 0;
   if (!DEMO) {

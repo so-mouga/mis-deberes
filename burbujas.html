@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Cañón de burbujas</title>
+<link rel="stylesheet" href="style.css?v=10">
+<link rel="stylesheet" href="pause.css?v=1">
+<style>
+  .bulle{top:auto;bottom:110px}
+</style>
+</head>
+<body>
+<main class="jeu">
+  <div class="hud"><h1>Burbujas</h1><div class="temps"><i id="barre"></i></div><span class="total" id="total"><span class="ani"><img id="dernier" src="img/03.jpg" alt=""></span><span id="nb">0</span></span></div>
+  <div class="ultimo" id="ultimo" hidden>¡Último minuto!</div>
+  <section class="terrain" id="terrain">
+    <canvas id="toile"></canvas>
+    <div class="bulle" id="bulle" hidden></div>
+  </section>
+</main>
+<section class="ecran-fin" id="fin" hidden></section>
+
+<script src="commun.js?v=10"></script>
+<script src="animaux.js?v=12"></script>
+<script src="sync.js?v=5"></script>
+<script src="pause-commun.js?v=1"></script>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const DOUX = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  // Ses animaux sont coincés dans des bulles géantes : il les libère en tirant des bulles.
+  const POOL = mesAnimaux();
+  let pile = [];
+  const prochainAnimal = () => { if (!pile.length) pile = melange(POOL.slice()); return animalN(pile.pop()); };
+  const IMGS = chargerImages(POOL);
+
+  // ---- Toile ----
+  const toile = $("toile"), g = toile.getContext("2d");
+  let L, H, U;
+  function dimensionner() {
+    const dpr = Math.min(devicePixelRatio || 1, 2), t = $("terrain");
+    L = t.clientWidth; H = t.clientHeight; toile.width = L * dpr; toile.height = H * dpr; g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    U = Math.min(L / 400, H / 700);
+  }
+  addEventListener("resize", dimensionner); dimensionner();
+  const rect = (x, y, w, h, r) => { g.beginPath(); if (g.roundRect) g.roundRect(x, y, w, h, r); else g.rect(x, y, w, h); };
+
+  // ---- Sons ----
+  const sonTir = () => note(700 + Math.random() * 200, 1000, .05, .03);
+  const sonPlop = () => note(900 + Math.random() * 300, 400, .08, .06);
+  const sonPorte = (fort) => note(fort ? 660 : 520, fort ? 1320 : 880, .15, .09);
+  const sonGlobo = () => { note(1200, 300, .12, .14, "triangle"); };
+  const vibre = vibrer;
+
+  // ---- Le canon : il tire tout seul, on le glisse avec le doigt ----
+  const canon = { x: 0, cible: 0, recul: 0 };
+  let posé = false;
+  function viser(e) { const b = toile.getBoundingClientRect(); canon.cible = Math.max(30 * U, Math.min(L - 30 * U, e.clientX - b.left)); posé = true; }
+  toile.addEventListener("pointerdown", (e) => { audio().resume?.(); try { toile.setPointerCapture(e.pointerId); } catch {} viser(e); toile.dataset.tenu = 1; });
+  toile.addEventListener("pointermove", (e) => { if (toile.dataset.tenu) viser(e); });
+  toile.addEventListener("pointerup", () => { delete toile.dataset.tenu; });
+
+  // ---- Les portes magiques : +2, +3, ×2, ×3 ----
+  const OPS = [["+", 2], ["+", 3], ["×", 2], ["×", 3]];
+  let portes = [];
+  function nouvellesPortes() {
+    portes = [];
+    [[.6, 1], [.4, -1]].forEach(([fy, sens]) => {
+      const ops = melange(OPS.slice()).slice(0, 2);
+      const ph = Math.random() * 6, vit = sens * (.6 + Math.random() * .3); // les 2 portes d'une rangée bougent ensemble
+      ops.forEach((op, i) => portes.push({ op, base: i ? .7 : .3, x: L * (i ? .7 : .3), y: H * fy, w: 104 * U, h: 36 * U, ph, vit, joie: 0, id: Math.random() }));
+    });
+  }
+  const valeur = (p, n) => p.op[0] === "×" ? n * p.op[1] : n + p.op[1];
+
+  // ---- Bulles, ballons, bulle géante ----
+  let bulles = [], ballons = [], confettis = [], geante = null, libres = 0, superT = 0, dernierOr = 0, tirT = 0;
+  let pv = 60;
+  function nouvelleGeante() {
+    const a = prochainAnimal();
+    geante = { a, x: L / 2, y: -90 * U, cibleY: H * .14, r: 64 * U, pv, pvMax: pv, tremble: 0, vx: 22 * U };
+    pv = Math.min(pv + 30, 220);
+  }
+  function lancerBallon(or) {
+    const gauche = Math.random() < .5;
+    ballons.push({ x: gauche ? -30 * U : L + 30 * U, y: H * (.27 + Math.random() * .06), vx: (gauche ? 1 : -1) * (45 + Math.random() * 30) * U, or, c: ["#E0453F", "#3FB8E8", "#2E9E57", "#B05BE0", "#F08A1C"][Math.floor(Math.random() * 5)], ph: Math.random() * 6 });
+  }
+  const bulle = (txt, ms, or) => messageJeu($("bulle"), txt, ms, or);
+  function confetti(x, y, n, couleurs) {
+    if (DOUX) n = Math.ceil(n / 3);
+    for (let i = 0; i < n; i++) { const a = Math.random() * 6.28, v = (2 + Math.random() * 6) * U; confettis.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 3 * U, t: 1.4, c: couleurs[i % couleurs.length], s: (5 + Math.random() * 5) * U, r: Math.random() * 6 }); }
+  }
+
+  function liberer() {
+    const a = geante.a;
+    libres++; $("nb").textContent = libres; $("dernier").src = imgAnimal(a.n);
+    const t = $("total"); t.classList.remove("pop"); void t.offsetWidth; t.classList.add("pop");
+    confetti(geante.x, geante.y, 50, ["#E0453F", "#F2B90F", "#2E9E57", "#3FB8E8", "#B05BE0", "#fff"]);
+    sonBien(); vibre([25, 40, 25]);
+    const nom = nomMaj(a);
+    bulle(`¡${nom} es libre!`, 2000, true); dire(`¡Bravo! ¡${nom} es libre!`);
+    // l'animal saute hors de la bulle puis file vers le compteur
+    volants.push({ n: a.n, x: geante.x, y: geante.y, t: 0 });
+    geante = null; nouvellesPortes();
+    setTimeout(nouvelleGeante, 1400);
+  }
+  const volants = [];
+
+  // ---- Boucle ----
+  let avant = performance.now(), fini = false;
+  canon.x = canon.cible = L / 2; nouvellesPortes(); nouvelleGeante();
+  function boucle(t) {
+    const dt = Math.min(.04, (t - avant) / 1000); avant = t;
+    canon.x += (canon.cible - canon.x) * Math.min(1, dt * 14);
+    superT = Math.max(0, superT - dt);
+    const CY = H - 62 * U;
+    // tir automatique
+    tirT -= dt;
+    if (tirT <= 0 && !fini) {
+      tirT = superT > 0 ? .11 : .2; canon.recul = 1; sonTir();
+      const angles = superT > 0 ? [-.12, 0, .12] : [0];
+      for (const an of angles) bulles.push({ x: canon.x, y: CY - 30 * U, vx: Math.sin(an) * 520 * U, vy: -Math.cos(an) * 520 * U, r: (superT > 0 ? 11 : 9) * U, vues: new Set() });
+    }
+    canon.recul = Math.max(0, canon.recul - dt * 8);
+    // ballons : de temps en temps, et un doré toutes les ~20 s
+    if (Math.random() < dt * .45 && ballons.length < 4) lancerBallon(false);
+    if (t - dernierOr > 20000) { dernierOr = t; lancerBallon(true); }
+
+    // --- dessin du fond : un ciel doux avec des nuages
+    const gr = g.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, "#8EC5FF"); gr.addColorStop(1, "#D8ECFF");
+    g.fillStyle = gr; g.fillRect(0, 0, L, H);
+    g.fillStyle = "rgba(255,255,255,.7)";
+    for (let i = 0; i < 3; i++) { const x = ((t / 60 * (i + 1) * .3) % (L + 160 * U)) - 80 * U, y = H * (.08 + i * .18); g.beginPath(); g.arc(x, y, 22 * U, 0, 7); g.arc(x + 26 * U, y - 8 * U, 28 * U, 0, 7); g.arc(x + 54 * U, y, 20 * U, 0, 7); g.fill(); }
+    g.fillStyle = "#58B947"; g.fillRect(0, H - 34 * U, L, 34 * U);
+
+    // --- portes
+    for (const p of portes) {
+      p.x = L * p.base + Math.sin(t / 1000 * p.vit + p.ph) * Math.max(0, L * .3 - p.w / 2 - 8 * U);
+      p.joie = Math.max(0, p.joie - dt * 4);
+      const fort = p.op[0] === "×", s = 1 + p.joie * .12;
+      g.save(); g.translate(p.x, p.y); g.scale(s, s);
+      g.fillStyle = fort ? "rgba(242,185,15,.85)" : "rgba(46,158,87,.85)";
+      rect(-p.w / 2, -p.h / 2, p.w, p.h, 14 * U); g.fill();
+      g.strokeStyle = "#fff"; g.lineWidth = 3 * U; g.stroke();
+      g.fillStyle = fort ? "#1E2A44" : "#fff"; g.font = `900 ${24 * U}px Lexend, system-ui`; g.textAlign = "center"; g.textBaseline = "middle";
+      g.fillText(p.op[0] + p.op[1], 0, 1 * U);
+      g.restore();
+    }
+
+    // --- ballons
+    for (let i = ballons.length - 1; i >= 0; i--) {
+      const b = ballons[i]; b.x += b.vx * dt; const y = b.y + Math.sin(t / 400 + b.ph) * 8 * U;
+      if (b.x < -60 * U || b.x > L + 60 * U) { ballons.splice(i, 1); continue; }
+      b.yy = y;
+      const r = (b.or ? 24 : 20) * U;
+      g.strokeStyle = "rgba(30,42,68,.5)"; g.lineWidth = 1.5 * U; g.beginPath(); g.moveTo(b.x, y + r); g.quadraticCurveTo(b.x + 6 * U, y + r + 16 * U, b.x, y + r + 30 * U); g.stroke();
+      g.fillStyle = b.or ? "#F2B90F" : b.c; g.beginPath(); g.ellipse(b.x, y, r * .85, r, 0, 0, 7); g.fill();
+      g.strokeStyle = "#1E2A44"; g.lineWidth = 2.5 * U; g.stroke();
+      g.fillStyle = "rgba(255,255,255,.55)"; g.beginPath(); g.ellipse(b.x - r * .3, y - r * .35, r * .18, r * .28, -.4, 0, 7); g.fill();
+      if (b.or) { g.fillStyle = "#fff"; g.font = `900 ${16 * U}px Lexend, system-ui`; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText("★", b.x, y + 1); }
+    }
+
+    // --- bulle géante avec un animal dedans
+    if (geante) {
+      const G = geante;
+      G.y += (G.cibleY - G.y) * Math.min(1, dt * 3);
+      G.x += G.vx * dt; if (G.x < G.r + 10 * U || G.x > L - G.r - 10 * U) G.vx *= -1;
+      G.tremble = Math.max(0, G.tremble - dt * 5);
+      const k = 1 + Math.sin(t / 300) * .02 + G.tremble * .06;
+      g.save(); g.translate(G.x, G.y); g.scale(k, 1 / k);
+      g.save(); g.beginPath(); g.arc(0, 0, G.r * .78, 0, 7); g.clip();
+      g.fillStyle = MILIEUX[G.a.m].fond; g.fillRect(-G.r, -G.r, G.r * 2, G.r * 2);
+      const im = IMGS[G.a.n]; if (im?.complete && im.naturalWidth) g.drawImage(im, -G.r * .78, -G.r * .78, G.r * 1.56, G.r * 1.56);
+      g.restore();
+      const bg = g.createRadialGradient(-G.r * .3, -G.r * .3, G.r * .1, 0, 0, G.r);
+      bg.addColorStop(0, "rgba(255,255,255,.55)"); bg.addColorStop(.6, "rgba(190,230,255,.25)"); bg.addColorStop(1, "rgba(120,190,255,.55)");
+      g.fillStyle = bg; g.beginPath(); g.arc(0, 0, G.r, 0, 7); g.fill();
+      g.strokeStyle = "#fff"; g.lineWidth = 3 * U; g.stroke();
+      g.fillStyle = "rgba(255,255,255,.85)"; g.beginPath(); g.ellipse(-G.r * .45, -G.r * .5, G.r * .16, G.r * .09, -.6, 0, 7); g.fill();
+      g.restore();
+      // ce qu'il reste à faire : une barre qui se vide, pas un score
+      const bw = 90 * U, by = G.y + G.r + 10 * U;
+      g.fillStyle = "rgba(30,42,68,.35)"; rect(G.x - bw / 2, by, bw, 9 * U, 5 * U); g.fill();
+      g.fillStyle = "#F2B90F"; rect(G.x - bw / 2, by, bw * G.pv / G.pvMax, 9 * U, 5 * U); g.fill();
+    }
+
+    // --- bulles tirées
+    const max = bulles.length > 240;
+    for (let i = bulles.length - 1; i >= 0; i--) {
+      const b = bulles[i], avantY = b.y;
+      b.x += b.vx * dt; b.y += b.vy * dt;
+      if (b.x < b.r || b.x > L - b.r) { b.vx *= -1; b.x = Math.max(b.r, Math.min(L - b.r, b.x)); }
+      if (b.y < -20 * U) { bulles.splice(i, 1); continue; }
+      // passer une porte multiplie les bulles
+      for (const p of portes) {
+        if (b.vues.has(p.id)) continue;
+        if (avantY >= p.y && b.y < p.y && Math.abs(b.x - p.x) < p.w / 2) {
+          b.vues.add(p.id); p.joie = 1; sonPorte(p.op[0] === "×");
+          const n = max ? 0 : valeur(p, 1) - 1;
+          for (let k = 0; k < n; k++) bulles.push({ x: b.x + (k - (n - 1) / 2) * 10 * U, y: b.y - 4 * U, vx: b.vx + (k - (n - 1) / 2) * 70 * U, vy: b.vy * (.92 + Math.random() * .1), r: b.r, vues: new Set(b.vues) });
+        }
+      }
+      // ballons
+      let touche = false;
+      for (let j = ballons.length - 1; j >= 0; j--) {
+        const bl = ballons[j];
+        if (Math.hypot(b.x - bl.x, b.y - (bl.yy ?? bl.y)) < 22 * U + b.r) {
+          ballons.splice(j, 1); sonGlobo(); vibre(15);
+          confetti(bl.x, bl.yy ?? bl.y, bl.or ? 30 : 14, bl.or ? ["#F2B90F", "#fff", "#F08A1C"] : [bl.c, "#fff"]);
+          if (bl.or) { superT = 6; bulle("¡Súper burbujas!", 2000, true); dire("¡Súper burbujas!"); sonBien(); }
+          touche = true; break;
+        }
+      }
+      if (touche) { bulles.splice(i, 1); continue; }
+      // bulle géante
+      if (geante && Math.hypot(b.x - geante.x, b.y - geante.y) < geante.r + b.r) {
+        bulles.splice(i, 1); geante.pv--; geante.tremble = 1; if (Math.random() < .3) sonPlop();
+        if (geante.pv <= 0) liberer();
+        continue;
+      }
+      g.fillStyle = superT > 0 ? "rgba(255,236,150,.75)" : "rgba(255,255,255,.65)";
+      g.beginPath(); g.arc(b.x, b.y, b.r, 0, 7); g.fill();
+      g.strokeStyle = superT > 0 ? "#F2B90F" : "#3F72CF"; g.lineWidth = 2 * U; g.stroke();
+      g.fillStyle = "#fff"; g.beginPath(); g.arc(b.x - b.r * .35, b.y - b.r * .35, b.r * .25, 0, 7); g.fill();
+    }
+
+    // --- animaux libérés qui volent vers le compteur
+    for (let i = volants.length - 1; i >= 0; i--) {
+      const v = volants[i]; v.t += dt;
+      let x = v.x, y = v.y, r = 46 * U;
+      if (v.t < .8) { y -= Math.sin(v.t / .8 * Math.PI) * 30 * U; r *= 1 + Math.sin(Math.min(1, v.t / .3) * Math.PI) * .2; }
+      else { const k = Math.min(1, (v.t - .8) / .6), e = k * k; x += (L - 30 * U - x) * e; y += (-30 * U - y) * e; r *= 1 - .6 * k; if (k >= 1) { volants.splice(i, 1); continue; } }
+      g.save(); g.beginPath(); g.arc(x, y, r + 4 * U, 0, 7); g.fillStyle = "#fff"; g.fill();
+      g.beginPath(); g.arc(x, y, r, 0, 7); g.clip(); g.fillStyle = MILIEUX[animalN(v.n).m].fond; g.fillRect(x - r, y - r, r * 2, r * 2);
+      const im = IMGS[v.n]; if (im?.complete && im.naturalWidth) g.drawImage(im, x - r, y - r, r * 2, r * 2); g.restore();
+    }
+
+    // --- confettis
+    for (let i = confettis.length - 1; i >= 0; i--) {
+      const c = confettis[i]; c.x += c.vx; c.y += c.vy; c.vy += .18 * U; c.vx *= .99; c.t -= dt; c.r += .15;
+      if (c.t <= 0) { confettis.splice(i, 1); continue; }
+      g.save(); g.globalAlpha = Math.min(1, c.t * 2); g.translate(c.x, c.y); g.rotate(c.r); g.fillStyle = c.c; g.fillRect(-c.s / 2, -c.s / 4, c.s, c.s / 2); g.restore();
+    }
+
+    // --- le canon (avec son animal préféré dessus : le dernier libéré)
+    const rc = canon.recul * 6 * U;
+    g.save(); g.translate(canon.x, CY + rc);
+    g.strokeStyle = "#1E2A44"; g.lineWidth = 3 * U; g.lineJoin = "round";
+    g.fillStyle = superT > 0 ? "#F2B90F" : "#3F72CF"; rect(-16 * U, -46 * U, 32 * U, 44 * U, 10 * U); g.fill(); g.stroke();
+    g.fillStyle = "#fff"; rect(-20 * U, -52 * U, 40 * U, 12 * U, 6 * U); g.fill(); g.stroke();
+    g.fillStyle = "#E0453F"; g.beginPath(); g.arc(0, 4 * U, 30 * U, Math.PI, 0); g.closePath(); g.fill(); g.stroke();
+    g.fillStyle = "#1E2A44"; for (const dx of [-20, 20]) { g.beginPath(); g.arc(dx * U, 6 * U, 9 * U, 0, 7); g.fill(); }
+    g.restore();
+    if (!posé && !fini) { // petite main qui montre le geste au début
+      const hx = L / 2 + Math.sin(t / 500) * 60 * U, hy = CY + 8 * U;
+      g.fillStyle = "rgba(255,255,255,.9)"; g.beginPath(); g.arc(hx, hy, 14 * U, 0, 7); g.fill(); g.strokeStyle = "#1E2A44"; g.lineWidth = 2.5 * U; g.stroke();
+    }
+    if (!fini) requestAnimationFrame(boucle);
+  }
+  requestAnimationFrame(boucle);
+  bulle("Mueve el cañón con el dedo", 3000);
+  dire("¡Cañón de burbujas! Mueve el cañón con el dedo. Pasa por las puertas mágicas y libera a tus animales.");
+
+  // ---- Minuteur : 3 min, « ¡Último minuto! » 30 s avant, puis la ballena ----
+  minuteurJeu({ barre: $("barre"), bandeau: $("ultimo"), annonce: "¡Último minuto! Libera un animal más.",
+    surFin: () => { fini = true; finDePause($("fin"), "¡Qué buen rescate!", libres === 1 ? "Has liberado a un animal." : `Has liberado a ${libres} animales.`); } });
+  if (TEST_RAPIDE) window.burbujas = { get libres() { return libres; }, get bulles() { return bulles.length; }, get geante() { return geante && geante.pv; } };
+})();
+</script>
+</body>
+</html>
