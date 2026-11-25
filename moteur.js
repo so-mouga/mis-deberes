@@ -233,7 +233,7 @@ async function papa(e) {
     const item = qs.shift();
     vider();
     const carte = document.createElement("div"); carte.className = "carte-parent";
-    carte.innerHTML = `<p class="pour-mayor">${AIDE_MAYOR}</p><p class="q">${item.q}</p>${item.item ? cromo(item.item, { nom: false }).outerHTML : ""}
+    carte.innerHTML = `<p class="pour-mayor">Para el adulto: pregunta, toca « Escuchar » y compara.</p><p class="q">${item.q}</p>${item.item ? cromo(item.item, { nom: false }).outerHTML : ""}
       <div class="reponse"><span>Respuesta<br><b>${item.r}</b></span><button class="ecoute" aria-label="Escuchar la respuesta">${ICONES.hautparleur}<span>Escuchar</span></button></div>`;
     const boutons = document.createElement("div"); boutons.className = "boutons";
     const oui = bouton("Sí, lo ha dicho", "vert"); oui.insertAdjacentHTML("afterbegin", ICONES.ok);

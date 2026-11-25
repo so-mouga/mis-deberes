@@ -13,9 +13,12 @@
 <style>
   header{display:flex;align-items:center;gap:12px}
   header .chemin{flex:1}
-  .consigne{display:flex;align-items:center;gap:12px;margin:16px 0 14px;min-height:62px}
+  .consigne{display:flex;align-items:center;gap:12px;margin:clamp(8px,2vh,16px) 0 clamp(8px,1.8vh,14px);min-height:62px}
   .consigne p{font-size:23px;font-weight:800;line-height:1.2;letter-spacing:-.01em}
-  #scene{flex:1;display:flex;flex-direction:column;gap:16px}
+  /* Rien ne défile pendant une séance : tout tient dans l'écran (25 nov. 2026). */
+  html,body{height:100%;overflow:hidden}
+  main.ecran{height:100dvh;min-height:0;overflow:hidden}
+  #scene{flex:1;min-height:0;display:flex;flex-direction:column;gap:16px}
   .entre{animation:entre .45s var(--ease) both}
   @keyframes entre{from{opacity:0;transform:translateY(12px)}}
 
@@ -34,9 +37,9 @@
   @keyframes releve{50%{transform:translateY(-6px)}}
 
   /* What's this? */
-  .image{width:min(250px,70%);align-self:center}
+  .image{width:min(250px,70%,30vh);align-self:center}
   .mots{display:flex;flex-direction:column;gap:12px;margin-top:auto}
-  .mot{min-height:64px;border-radius:32px;background:#fff;color:var(--marine);font-size:26px;font-weight:800;box-shadow:0 5px 0 #B9C7EA;transition:transform .2s var(--ease),background .3s,opacity .3s,box-shadow .25s}
+  .mot{min-height:clamp(52px,8.5vh,64px);border-radius:32px;background:#fff;color:var(--marine);font-size:26px;font-weight:800;box-shadow:0 5px 0 #B9C7EA;transition:transform .2s var(--ease),background .3s,opacity .3s,box-shadow .25s}
   .mot:active{transform:translateY(3px)}
   .mot.lu{background:var(--ciel)}
   .mot.calme{opacity:.4}
@@ -59,12 +62,13 @@
   .tuile.partie{visibility:hidden}
 
   /* Con un mayor : pour l'adulte qui en sait le moins (il compare à l'oreille) */
-  .carte-parent{background:#fff;color:var(--marine);border-radius:22px;padding:18px;display:flex;flex-direction:column;gap:14px;box-shadow:0 8px 18px rgba(0,0,0,.3)}
-  .carte-parent .q{font-size:27px;font-weight:850;line-height:1.2;text-align:center}
-  .carte-parent .pour-mayor{font-size:17px;font-weight:600;line-height:1.35;color:#55617A;background:#FFF6D6;border-radius:12px;padding:8px 12px;text-align:center}
-  .carte-parent .cromo{width:140px;align-self:center;box-shadow:none;border:2px solid #DCE4F5}
+  .carte-parent{flex:1;min-height:0;background:#fff;color:var(--marine);border-radius:22px;padding:14px;display:flex;flex-direction:column;gap:10px;box-shadow:0 8px 18px rgba(0,0,0,.3)}
+  .carte-parent .q{font-size:25px;font-weight:850;line-height:1.2;text-align:center}
+  .carte-parent .pour-mayor{font-size:15px;font-weight:600;line-height:1.35;color:#55617A;background:#FFF6D6;border-radius:12px;padding:8px 12px;text-align:center}
+  .carte-parent .cromo{width:min(150px,22vh);align-self:center;flex:none;box-shadow:none;border:2px solid #DCE4F5}
   .reponse{display:flex;align-items:center;justify-content:space-between;gap:10px;border-top:2px dashed #DCE4F5;padding-top:12px;font-size:18px;font-weight:600;color:#55617A}
-  .reponse b{font-size:24px;color:var(--marine)}
+  .reponse b{font-size:20px;color:var(--marine)}
+  .carte-parent .reponse{margin-top:auto}
   .reponse .ecoute{flex:none;display:flex;align-items:center;gap:8px;min-height:64px;padding:0 20px 0 16px;border-radius:32px;background:var(--jaune);color:var(--marine);
     font-size:21px;font-weight:850;box-shadow:0 5px 0 var(--jaune-f);transition:transform .2s var(--ease)}
   .reponse .ecoute:active{transform:translateY(3px)}
@@ -76,7 +80,9 @@
   .icone-pause svg{width:18px;height:18px}
   .propo{color:#fff!important;font-weight:800!important;font-size:23px!important}
   .propo span{display:block;font-weight:600;color:var(--encre-douce);font-size:20px;margin-top:4px}
-  .boutons{display:flex;flex-direction:column;gap:14px;margin-top:auto}
+  .boutons{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:auto}
+  .boutons .gros{min-height:68px;font-size:20px;border-radius:22px;padding:0 8px;gap:8px;line-height:1.15}
+  .boutons .gros svg{width:24px;height:24px;flex:none}
 
   /* Cahier */
   .cahier{background:#fff;border-radius:18px;padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:12px;
@@ -97,7 +103,7 @@
   .wagon.vide{background:transparent;border:3px dashed var(--jaune);color:var(--jaune);font-size:30px}
   .question{font-size:25px;font-weight:850;text-align:center;line-height:1.2;margin-top:6px}
   .lignes{list-style:none;background:#fff;color:var(--marine);border-radius:18px;padding:10px 20px;counter-reset:n}
-  .lignes li{counter-increment:n;display:flex;align-items:baseline;gap:14px;font-size:28px;font-weight:800;padding:6px 0;border-bottom:2px solid #DCE4F5}
+  .lignes li{counter-increment:n;display:flex;align-items:baseline;gap:14px;font-size:clamp(22px,3.8vh,28px);font-weight:800;padding:clamp(2px,.7vh,6px) 0;border-bottom:2px solid #DCE4F5}
   .lignes li:last-child{border-bottom:0}
   .lignes li::before{content:counter(n);font-size:17px;font-weight:700;color:#8A97B5;min-width:16px}
   .cahier > *{min-width:0}
@@ -214,6 +220,6 @@
 <script src="animaux.js?v=12"></script>
 <script src="sync.js?v=4"></script>
 <script src="deberes.js?v=4"></script>
-<script src="moteur.js?v=14"></script>
+<script src="moteur.js?v=15"></script>
 </body>
 </html>
