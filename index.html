@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="theme-color" content="#2347A8">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icone-192.png">
@@ -12,6 +12,7 @@
 <link rel="stylesheet" href="style.css?v=10">
 <style>
   /* Accueil réduit à l'essentiel (25 nov. 2026) : le thème, le gros bouton, ses animaux. Rien ne défile. */
+  html,body{height:100%;overflow:hidden;overscroll-behavior:none;touch-action:pan-x pan-y}
   .ecran{height:100dvh;min-height:0;overflow:hidden}
   header{display:flex;align-items:center;gap:12px}
   h1{flex:1;font-weight:850;font-size:clamp(28px,8.2vw,34px);letter-spacing:-.02em;line-height:1.05}

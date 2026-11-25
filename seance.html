@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="theme-color" content="#2347A8">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icone-192.png">
@@ -16,7 +16,7 @@
   .consigne{display:flex;align-items:center;gap:12px;margin:clamp(8px,2vh,16px) 0 clamp(8px,1.8vh,14px);min-height:62px}
   .consigne p{font-size:23px;font-weight:800;line-height:1.2;letter-spacing:-.01em}
   /* Rien ne défile pendant une séance : tout tient dans l'écran (25 nov. 2026). */
-  html,body{height:100%;overflow:hidden}
+  html,body{height:100%;overflow:hidden;overscroll-behavior:none;touch-action:pan-x pan-y}
   main.ecran{height:100dvh;min-height:0;overflow:hidden}
   #scene{flex:1;min-height:0;display:flex;flex-direction:column;gap:16px}
   .entre{animation:entre .45s var(--ease) both}
