@@ -28,7 +28,7 @@
 <script src="commun.js?v=10"></script>
 <script src="animaux.js?v=12"></script>
 <script src="sync.js?v=5"></script>
-<script src="pause-commun.js?v=1"></script>
+<script src="pause-commun.js?v=2"></script>
 <script>
 (() => {
   const $ = (id) => document.getElementById(id);
@@ -116,7 +116,7 @@
   let items = 0, niveau = 0, superT = 0, secousse = 0, debut = 0, flash = 0, ceremonie = 0, boost = 0, doubles = 0;
   let aSemer = null, prochaineSurprise = 0, ordreSurprises = [], lluviaT = 0, lluviaPas = 0, amigo = null;
   const objets = [], eclats = [], pops = [], ondes = [], fumees = [], ambiance = [];
-  const heros = { y: 0, vy: 0, sauts: 0, chute: 0, ecrase: 1, tourne: 0, vrille: 0, charge: 0, auSol: true, img: new Image(), imgs: [], taille: 1 };
+  const heros = { y: 0, vy: 0, sauts: 0, chute: 0, ecrase: 1, tourne: 0, vrille: 0, charge: 0, auSol: true, img: imageSure(), imgs: [], taille: 1 };
 
   // Une surprise toutes les 30 à 40 s (bien plus souvent en test rapide)
   const SURPRISES = ["lluvia", "cofre", "amigo", "arcoiris", "etoile"];
@@ -128,7 +128,8 @@
     $("choix").hidden = true; $("terrain").hidden = false; dimensionner();
     $("pastille").style.background = monde.couleur; $("pastille").style.borderColor = monde.bord;
     heros.img.src = imgAnimal(a.n);
-    heros.imgs = (EVOLUTIONS[a.n] || []).map((src) => { if (!src) return null; const i = new Image(); i.src = src; return i; });
+    heros.sprite = imageSure(spriteAnimal(a.n));
+    heros.imgs = (EVOLUTIONS[a.n] || []).map((src) => { if (!src) return null; return imageSure(src); });
     heros.y = nage ? H * .45 : SOL - rayon(); heros.vy = 0; heros.sauts = P.sauts;
     prochain = L * .9; derniereEtoile = 0;
     ordreSurprises = SURPRISES.slice().sort(() => Math.random() - .5);
@@ -280,8 +281,8 @@
       const memes = mesAnimaux(1).filter((n) => n !== A.n && NAGEURS.includes(n) === nage);
       const liste = memes.length ? memes : mesAnimaux(1).filter((n) => n !== A.n);
       const a = animalN(liste[Math.floor(Math.random() * liste.length)] || (A.n === 6 ? 5 : 6));
-      const img = new Image(); img.src = imgAnimal(a.n);
-      amigo = { a, img, t: 10, x: -40 * U, y: heros.y, part: false };
+      const img = imageSure(imgAnimal(a.n)); const sprite = imageSure(spriteAnimal(a.n));
+      amigo = { a, img, sprite, t: 10, x: -40 * U, y: heros.y, part: false };
       sonBien(); bulle("¡Un amigo te ayuda!", 2600, true); dire(`¡Mira! ¡${nomMaj(a)} viene a ayudarte!`);
     } else aSemer = k; // apparaît devant, annoncé quand il arrive à l'écran
   }
@@ -607,7 +608,7 @@
     if (!nage) { const k = Math.max(.35, 1 - (SOL - (y + r)) / (300 * U)); g.fillStyle = "rgba(0,0,0,.15)"; g.beginPath(); g.ellipse(x, SOL + 4 * U, r * k, 7 * U * k, 0, 0, 7); g.fill(); }
     // la feuille-parachute du perezoso, qui descend despacito
     if (!nage && P.grav < 1 && heros.vy > 0 && !heros.auSol) {
-      g.save(); g.translate(x, y - r - 18 * U); g.rotate(Math.sin(t / 200) * .15);
+      g.save(); g.translate(x, y - r * 1.5 - 10 * U); g.rotate(Math.sin(t / 200) * .15); // au-dessus de la tête du sprite
       g.strokeStyle = "#3E8E4A"; g.lineWidth = 3 * U; g.beginPath(); g.moveTo(0, 18 * U); g.lineTo(0, -6 * U); g.stroke();
       g.fillStyle = "#58B947"; g.beginPath(); g.ellipse(0, -8 * U, 34 * U, 12 * U, 0, Math.PI, 0); g.fill(); g.strokeStyle = "#1E2A44"; g.stroke();
       g.restore();
@@ -619,19 +620,42 @@
     else if (heros.charge > 0) g.rotate(heros.charge * .5); // il fonce, tête en avant
     const e = heros.ecrase; g.scale(1 / Math.sqrt(e), e);
     if (ceremonie > 0) { const p = 1 + Math.sin((1.3 - ceremonie) * 14) * .2 * ceremonie; g.scale(p, p); }
-    // anneau du niveau (et arc-en-ciel au dernier niveau ou en super)
     const anneau = superT > 0 ? "arc" : ANNEAUX[niveau];
-    if (anneau === "arc") { const gr = g.createConicGradient ? g.createConicGradient(t / 300, 0, 0) : null; if (gr) { [...ARC, ARC[0]].forEach((c, i) => gr.addColorStop(i / 6, c)); g.fillStyle = gr; } else g.fillStyle = "#F2B90F"; }
-    else g.fillStyle = anneau;
-    g.beginPath(); g.arc(0, 0, r + 5 * U, 0, 7); g.fill();
-    g.save(); g.beginPath(); g.arc(0, 0, r, 0, 7); g.clip();
-    g.fillStyle = MILIEUX[A.m].fond; g.fillRect(-r, -r, r * 2, r * 2);
-    let img = heros.img; for (let k = niveau; k > 0; k--) if (imagePrete(heros.imgs[k])) { img = heros.imgs[k]; break; }
-    if (imagePrete(img)) g.drawImage(img, -r, -r, r * 2, r * 2);
-    g.restore();
+    // l'animal détouré (ou l'image d'évolution, si elle existe) ; le rond seulement si le sprite n'est pas encore là
+    let sprite = heros.sprite; for (let k = niveau; k > 0; k--) if (imagePrete(heros.imgs[k])) { sprite = heros.imgs[k]; break; }
+    const hs = r * 2.5; // hauteur du dessin : les pieds en bas du cercle de contact
+    let haut = -r, cx = 0; // où poser la couronne
+    if (imagePrete(sprite)) {
+      // halo de la couleur du niveau (rien au niveau 1 ; arc-en-ciel au niveau 4 et en super)
+      if (anneau !== "#FFFFFF") {
+        const R = r * 1.55, gr = g.createRadialGradient(0, r * .1, r * .3, 0, r * .1, R);
+        const c = anneau === "arc" ? ARC[Math.floor(t / 120) % 6] : anneau;
+        gr.addColorStop(0, c + "CC"); gr.addColorStop(.6, c + "66"); gr.addColorStop(1, c + "00");
+        g.fillStyle = gr; g.beginPath(); g.arc(0, r * .1, R, 0, 7); g.fill();
+        if (anneau === "arc" && g.createConicGradient) { // un anneau arc-en-ciel qui tourne, en plus
+          const cg = g.createConicGradient(t / 300, 0, r * .1); [...ARC, ARC[0]].forEach((cc, i) => cg.addColorStop(i / 6, cc));
+          g.strokeStyle = cg; g.lineWidth = 4 * U; g.globalAlpha = .7; g.beginPath(); g.arc(0, r * .1, R * .92, 0, 7); g.stroke(); g.globalAlpha = 1;
+        }
+      }
+      // fin contour sombre pour qu'un animal pâle se voie sur la neige
+      g.shadowColor = "rgba(30,42,68,.55)"; g.shadowBlur = 4 * U;
+      dessinerSprite(g, sprite, A.n, 0, r, hs, { ombre: false });
+      g.shadowColor = "transparent"; g.shadowBlur = 0;
+      const w = hs * sprite.naturalWidth / sprite.naturalHeight;
+      haut = r - hs + hs * .06; cx = w * .18; // la tête est en haut, plutôt vers l'avant
+    } else {
+      if (anneau === "arc") { const gr = g.createConicGradient ? g.createConicGradient(t / 300, 0, 0) : null; if (gr) { [...ARC, ARC[0]].forEach((c, i) => gr.addColorStop(i / 6, c)); g.fillStyle = gr; } else g.fillStyle = "#F2B90F"; }
+      else g.fillStyle = anneau;
+      g.beginPath(); g.arc(0, 0, r + 5 * U, 0, 7); g.fill();
+      g.save(); g.beginPath(); g.arc(0, 0, r, 0, 7); g.clip();
+      g.fillStyle = MILIEUX[A.m].fond; g.fillRect(-r, -r, r * 2, r * 2);
+      if (imagePrete(heros.img)) g.drawImage(heros.img, -r, -r, r * 2, r * 2);
+      g.restore();
+    }
     // la couronne du niveau 4
     if (niveau >= 3) {
-      const w = r * 1.1, h = r * .55, cy = -r - 2 * U;
+      g.translate(cx, 0);
+      const w = r * 1.1, h = r * .55, cy = haut - 2 * U;
       g.fillStyle = "#F2B90F"; g.strokeStyle = "#1E2A44"; g.lineWidth = 2.5 * U; g.lineJoin = "round";
       g.beginPath(); g.moveTo(-w / 2, cy); g.lineTo(-w / 2, cy - h); g.lineTo(-w / 4, cy - h * .5); g.lineTo(0, cy - h * 1.1); g.lineTo(w / 4, cy - h * .5); g.lineTo(w / 2, cy - h); g.lineTo(w / 2, cy); g.closePath(); g.fill(); g.stroke();
       g.fillStyle = "#E0453F"; g.beginPath(); g.arc(0, cy - h * .3, 3.5 * U, 0, 7); g.fill();
@@ -650,13 +674,17 @@
     const ami = amigo, r = 24 * U;
     ami.t -= dt;
     if (ami.t <= 0 && !ami.part) { ami.part = true; dire("¡Adiós, amigo!"); }
-    const cibleX = ami.part ? L + 80 * U : HX + 85 * U; // il court juste devant, bien visible
+    const cibleX = ami.part ? L + 80 * U : HX + 115 * U; // il court juste devant, bien visible
     ami.x += (cibleX - ami.x) * Math.min(1, dt * (ami.part ? 1.5 : 3));
     ami.y += (heros.y - ami.y) * Math.min(1, dt * 5);
     if (ami.part && ami.x > L + 40 * U) { amigo = null; return; }
     const y = ami.y + Math.sin(t / 120) * 3 * U;
     if (!nage) { g.fillStyle = "rgba(0,0,0,.12)"; g.beginPath(); g.ellipse(ami.x, SOL + 4 * U, r * .8, 5 * U, 0, 0, 7); g.fill(); }
-    dessinerRond(g, ami.img, ami.a, ami.x, y, r, { anneau: "#FFFFFF", bord: 4 * U });
+    if (imagePrete(ami.sprite)) {
+      g.shadowColor = "rgba(30,42,68,.5)"; g.shadowBlur = 3 * U;
+      dessinerSprite(g, ami.sprite, ami.a.n, ami.x, y + r, r * 2.4, { ombre: false });
+      g.shadowColor = "transparent"; g.shadowBlur = 0;
+    } else dessinerRond(g, ami.img, ami.a, ami.x, y, r, { anneau: "#FFFFFF", bord: 4 * U });
     // l'ami ramasse aussi
     for (const o of objets) if (o.t === "item" && !o.pris) { const cx = o.x - dist + HX; if (Math.hypot(cx - ami.x, o.y - y) < r + 16 * U) ramasser(o, cx, o.y); }
   }

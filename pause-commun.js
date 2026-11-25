@@ -48,8 +48,52 @@ function mesAnimaux(min = 3) {
   return siens.length >= min ? siens : AVEC_IMAGE.slice();
 }
 // Images prêtes à dessiner dans une toile : chargerImages([1, 4]) → { 1: Image, 4: Image }
-function chargerImages(liste) { const o = {}; liste.forEach((n) => { const i = new Image(); i.src = imgAnimal(n); o[n] = i; }); return o; }
+// Une image qui n'arrive pas (réseau lent, serveur occupé) est redemandée jusqu'à 4 fois.
+// imageSure(src) remplace new Image() ; on peut aussi lui donner son src plus tard (img.src = …).
+function imageSure(src) {
+  const i = new Image(); let essais = 0;
+  i.addEventListener("load", () => (essais = 0));
+  i.addEventListener("error", () => {
+    if (++essais > 4) return;
+    const base = i.src.replace(/[?&]r=\d+$/, "");
+    setTimeout(() => (i.src = base + (base.includes("?") ? "&" : "?") + "r=" + essais), 700 * essais);
+  });
+  if (src) i.src = src;
+  return i;
+}
+function chargerImages(liste) { const o = {}; liste.forEach((n) => (o[n] = imageSure(imgAnimal(n)))); return o; }
+// Pareil pour les <img> de la page (cromos, compteur) : on les redemande aussi.
+function redemanderImg(i) {
+  if (!(i instanceof HTMLImageElement) || !i.src) return;
+  const essais = +(i.dataset.essais || 0) + 1; if (essais > 4) return;
+  i.dataset.essais = essais;
+  const base = i.src.replace(/[?&]r=\d+$/, "");
+  setTimeout(() => (i.src = base + (base.includes("?") ? "&" : "?") + "r=" + essais), 700 * essais);
+}
+document.addEventListener("error", (e) => redemanderImg(e.target), true);
+document.addEventListener("load", (e) => { if (e.target instanceof HTMLImageElement) delete e.target.dataset.essais; }, true); // une image arrivée remet le compteur à zéro
+// celles qui ont raté avant que ce fichier soit chargé (les <img> écrites dans la page)
+document.querySelectorAll("img").forEach((i) => { if (i.complete && !i.naturalWidth) redemanderImg(i); });
 const imagePrete = (i) => !!(i && i.complete && i.naturalWidth); // une image cassée ne doit jamais figer le jeu
+
+// ---- Sprites : l'animal détouré, sans fond (img/sprite/NN.webp, faits depuis animaux/detoure/NN.png) ----
+// Pour un personnage qui court, nage ou saute « en vrai ». Le rond (dessinerRond) reste pour les cromos et les compteurs.
+const spriteAnimal = (n) => `img/sprite/${String(n).padStart(2, "0")}.webp`;
+// Ceux-là regardent vers la gauche sur leur image : dessinerSprite les retourne pour qu'ils avancent vers la droite.
+const REGARDE_A_GAUCHE = [6, 12, 13]; // delfín, narval, orca
+function chargerSprites(liste) { const o = {}; liste.forEach((n) => (o[n] = imageSure(spriteAnimal(n)))); return o; }
+// dessinerSprite(g, img, n, x, y, h) : l'animal posé sur (x, y) = le milieu de ses pieds, haut de h pixels.
+// vers : 1 = il regarde à droite (défaut), -1 = à gauche. ecrase : <1 écrasé (atterrissage), >1 étiré (saut). rotation en radians.
+function dessinerSprite(g, img, n, x, y, h, { vers = 1, ecrase = 1, rotation = 0, ombre = true } = {}) {
+  if (!imagePrete(img)) return false;
+  const w = h * img.naturalWidth / img.naturalHeight;
+  if (ombre) { g.fillStyle = "rgba(0,0,0,.16)"; g.beginPath(); g.ellipse(x, y, w * .38, h * .06, 0, 0, 7); g.fill(); }
+  g.save(); g.translate(x, y); g.rotate(rotation);
+  g.scale((REGARDE_A_GAUCHE.includes(n) ? -1 : 1) * vers / Math.sqrt(ecrase), ecrase);
+  g.drawImage(img, -w / 2, -h, w, h);
+  g.restore();
+  return true;
+}
 
 // Un animal dans un rond à bord blanc (comme les cromos), dessiné dans une toile.
 // anneau : une couleur, ou "arc" pour l'arc-en-ciel (niveau max, super pouvoir).
