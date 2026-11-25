@@ -28,12 +28,55 @@
 <script>
 (() => {
   const $ = (id) => document.getElementById(id);
-  const DOUX = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  // Ses animaux sont coincés dans des bulles géantes : il les libère en tirant des bulles.
+  const DOUX = DOUX_JEU;
+  // Ses animaux sont coincés dans des prisons de leur monde (bulle d'eau, cocon de feuilles, glace, ambre) :
+  // il les libère en tirant des bulles. Chaque animal libéré rejoint la rangée qui l'encourage sur l'herbe.
   const POOL = mesAnimaux();
   let pile = [];
   const prochainAnimal = () => { if (!pile.length) pile = melange(POOL.slice()); return animalN(pile.pop()); };
-  const IMGS = chargerImages(POOL);
+  let ratees = 0;
+  const IMGS = {};
+  const charger = (n) => { if (!IMGS[n]) { IMGS[n] = imageSure(imgAnimal(n)); IMGS[n].addEventListener("error", () => ratees++); } }; // redemandée si elle rate
+  const DORES = ANIMAUX.filter((a) => a.oro).map((a) => a.n);
+  // les animaux détourés (sprites) : partout dans le jeu ; le rond ne reste que pour le compteur
+  const SPR = {};
+  const chargerSpr = (n) => { if (!SPR[n]) SPR[n] = imageSure(spriteAnimal(n)); };
+  POOL.forEach(charger); DORES.forEach(charger); POOL.forEach(chargerSpr); DORES.forEach(chargerSpr);
+  const MARINS = [1, 2, 3, 4, 5, 6, 12, 13]; // sur l'herbe, ceux-là restent dans une petite bulle d'eau
+
+  // ---- Chaque animal libéré aide pendant 7 s avec son pouvoir (les mêmes que dans Los guardianes) ----
+  const FAMILLES = { rompe: [2, 3, 9, 11, 12, 15, 18], atrae: [1, 8], rapido: [6, 10, 13, 17], rebota: [4, 5, 7, 14, 16] };
+  const familleDe = (n) => Object.keys(FAMILLES).find((k) => FAMILLES[k].includes(n)) || "rapido";
+  const POUVOIRS = {
+    1: ["Atrae", "atrae las burbujas con sus tentáculos"], 2: ["Rompe todo", "rompe todo lo que toca"], 3: ["Gigante del mar", "es gigante y lo rompe todo"],
+    4: ["Rebota", "nada muy, muy alto"], 5: ["Rebota", "tiene caparazón: rebota sin parar"], 6: ["Rapidísimo", "nada rapidísimo"],
+    7: ["Rebota", "salta muy alto y baja despacito"], 8: ["Lengua mágica", "atrae las burbujas con su lengua"], 9: ["Rompe las rocas", "rompe las rocas con sus puños"],
+    10: ["Rapidísimo", "corre rápido y dispara el doble"], 11: ["Rompe el hielo", "rompe el hielo"], 12: ["Cuerno mágico", "lo rompe todo con su cuerno"],
+    13: ["La más rápida", "es la más rápida del mar"], 14: ["Rebota", "salta dos veces en la nieve"], 15: ["El más fuerte", "es el más fuerte: lo rompe todo"],
+    16: ["Salta altísimo", "salta altísimo"], 17: ["El más rápido", "dispara más rápido que nadie"], 18: ["Gigante aplastador", "es gigante y lo aplasta todo"],
+  };
+  const DUREE_AIDE = 7;
+  const COUL_MONDE = { mar: "#7FC8F8", selva: "#3E9B4F", polos: "#DDF3FF", gigantes: "#F0A422" };
+  const ARC = ["#E0453F", "#F08A1C", "#F2B90F", "#2E9E57", "#3FB8E8", "#B05BE0"];
+
+  // ---- Le temps : le rythme monte doucement, la fin est une fiesta ----
+  const debutJeu = performance.now();
+  // Le gran Nubarrón arrive ~42 s avant la fin. Il ne fait rien à Dorian et éclate TOUJOURS avant la fin :
+  // sa vie ne peut jamais dépasser une ligne qui descend jusqu'à zéro 6 s avant l'arrêt.
+  const BOSS_DEBUT = DUREE_JEU - (TEST_RAPIDE ? DUREE_JEU * .45 : Math.min(42000, DUREE_JEU * .3));
+  const BOSS_FIN = DUREE_JEU - (TEST_RAPIDE ? DUREE_JEU * .1 : 6000);
+  const PV_BOSS = TEST_RAPIDE ? 150 : 900;
+  // … et il ne peut pas tomber trop vite non plus : au moins ~25 s de combat, même s'il tire parfaitement.
+  const BOSS_MIN = TEST_RAPIDE ? (BOSS_FIN - BOSS_DEBUT) * .7 : 25000;
+  // Les Nubarroncitos : une vague de ~20 s vers 1 min 15 (puis toutes les ~100 s dans une longue partie).
+  const VAGUE_DUREE = TEST_RAPIDE ? DUREE_JEU * .15 : 20000;
+  const VAGUES = [];
+  for (let v = TEST_RAPIDE ? DUREE_JEU * .2 : Math.min(75000, DUREE_JEU * .42); v + VAGUE_DUREE < BOSS_DEBUT - (TEST_RAPIDE ? 0 : 15000); v += TEST_RAPIDE ? 1e9 : 100000) VAGUES.push(v);
+  const PV_MINI = TEST_RAPIDE ? 12 : 25; // assez solides pour avoir le temps de faire leur bêtise
+  const PERIODE_SPECIAL = TEST_RAPIDE ? Math.max(3000, DUREE_JEU / 6) : 10000; // un ballon spécial toutes les ~10 s
+  const PERIODE_PORTES = TEST_RAPIDE ? Math.max(5, DUREE_JEU / 4000) : 22;      // les portes changent toutes les ~22 s
+  // Une prison cède en ~8 s s'il vise bien, ~12 s au hasard (mesuré : 38 et 27 coups/s avec les portes), du début à la fin.
+  const PV = TEST_RAPIDE ? 60 : 320;
 
   // ---- Toile ----
   const toile = $("toile"), g = toile.getContext("2d");
@@ -46,12 +89,18 @@
   addEventListener("resize", dimensionner); dimensionner();
   const rect = (x, y, w, h, r) => { g.beginPath(); if (g.roundRect) g.roundRect(x, y, w, h, r); else g.rect(x, y, w, h); };
 
-  // ---- Sons ----
+  // ---- Sons (jamais de son d'échec) ----
   const sonTir = () => note(700 + Math.random() * 200, 1000, .05, .03);
-  const sonPlop = () => note(900 + Math.random() * 300, 400, .08, .06);
-  const sonPorte = (fort) => note(fort ? 660 : 520, fort ? 1320 : 880, .15, .09);
-  const sonGlobo = () => { note(1200, 300, .12, .14, "triangle"); };
-  const vibre = vibrer;
+  const sonPlop = (d) => note(480 + d * 900 + Math.random() * 60, 320 + d * 600, .07, .06); // monte à mesure que la prison cède
+  const sonFissure = () => { bruitFiltre(2200, 2, .12, .45); note(1500, 900, .06, .05, "triangle"); };
+  const sonPorte = (v) => note(v >= 5 ? 880 : v >= 3 ? 660 : 520, v >= 5 ? 1760 : v >= 3 ? 1320 : 880, .15, .08);
+  const sonGlobo = () => note(1200, 300, .12, .14, "triangle");
+  const sonEclate = () => {
+    bruitFiltre(900, .8, .35, 1.2); note(300, 80, .3, .2, "triangle");
+    [[660, 990], [880, 1320], [1175, 1760]].forEach(([a, b], i) => setTimeout(() => note(a, b, i === 2 ? .3 : .15, .14), 150 + i * 100));
+  };
+  const sonRugit = () => { bruitFiltre(160, .6, .8, 1.3); note(150, 70, .7, .2, "triangle"); };
+  const sonSpecial = () => [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => note(f, f * 1.5, .14, .1), i * 70));
 
   // ---- Le canon : il tire tout seul, on le glisse avec le doigt ----
   const canon = { x: 0, cible: 0, recul: 0 };
@@ -61,30 +110,70 @@
   toile.addEventListener("pointermove", (e) => { if (toile.dataset.tenu) viser(e); });
   toile.addEventListener("pointerup", () => { delete toile.dataset.tenu; });
 
-  // ---- Les portes magiques : +2, +3, ×2, ×3 ----
+  // ---- Les portes magiques : +2, +3, ×2, ×3, et parfois une ×5 arc-en-ciel ----
   const OPS = [["+", 2], ["+", 3], ["×", 2], ["×", 3]];
-  let portes = [];
+  let portes = [], sortantes = [], portesT = 0;
   function nouvellesPortes() {
-    portes = [];
-    [[.6, 1], [.4, -1]].forEach(([fy, sens]) => {
+    sortantes = portes; sortantes.forEach((p) => (p.app = 1));
+    portes = []; portesT = 0;
+    const rare = Math.random() < .2 ? Math.floor(Math.random() * 4) : -1;
+    [[.6, 1], [.4, -1]].forEach(([fy, sens], r) => {
       const ops = melange(OPS.slice()).slice(0, 2);
       const ph = Math.random() * 6, vit = sens * (.6 + Math.random() * .3); // les 2 portes d'une rangée bougent ensemble
-      ops.forEach((op, i) => portes.push({ op, base: i ? .7 : .3, x: L * (i ? .7 : .3), y: H * fy, w: 104 * U, h: 36 * U, ph, vit, joie: 0, id: Math.random() }));
+      ops.forEach((op, i) => portes.push({ op: r * 2 + i === rare ? ["×", 5] : op, base: i ? .7 : .3, x: L * (i ? .7 : .3), y: H * fy, w: 104 * U, h: 36 * U, ph, vit, joie: 0, popT: 0, app: 0, id: Math.random() }));
     });
   }
   const valeur = (p, n) => p.op[0] === "×" ? n * p.op[1] : n + p.op[1];
-
-  // ---- Bulles, ballons, bulle géante ----
-  let bulles = [], ballons = [], confettis = [], geante = null, libres = 0, superT = 0, dernierOr = 0, tirT = 0;
-  let pv = 60;
-  function nouvelleGeante() {
-    const a = prochainAnimal();
-    geante = { a, x: L / 2, y: -90 * U, cibleY: H * .14, r: 64 * U, pv, pvMax: pv, tremble: 0, vx: 22 * U };
-    pv = Math.min(pv + 30, 220);
+  function dessinerPorte(p, t, s) {
+    const fort = p.op[0] === "×", rare = p.op[1] >= 5;
+    g.save(); g.translate(p.x, p.y); g.scale(s, s);
+    if (rare) {
+      const gr = g.createLinearGradient(-p.w / 2, 0, p.w / 2, 0);
+      ARC.forEach((c, i) => gr.addColorStop((i / ARC.length + t / 3000) % 1, c));
+      g.fillStyle = gr;
+    } else g.fillStyle = fort ? "rgba(242,185,15,.85)" : "rgba(46,158,87,.85)";
+    rect(-p.w / 2, -p.h / 2, p.w, p.h, 14 * U); g.fill();
+    g.strokeStyle = "#fff"; g.lineWidth = (rare ? 4 : 3) * U; g.stroke();
+    g.font = `900 ${(rare ? 27 : 24) * U}px Lexend, system-ui`; g.textAlign = "center"; g.textBaseline = "middle";
+    if (rare) { g.lineWidth = 5 * U; g.strokeStyle = "#1E2A44"; g.strokeText(p.op[0] + p.op[1], 0, 1 * U); }
+    g.fillStyle = rare ? "#fff" : fort ? "#1E2A44" : "#fff";
+    g.fillText(p.op[0] + p.op[1], 0, 1 * U);
+    if (rare && !DOUX) for (let k = 0; k < 3; k++) { const a = t / 400 + k * 2.1; g.fillStyle = "#fff"; g.beginPath(); g.arc(Math.cos(a) * p.w * .55, Math.sin(a) * p.h * .75, 2.5 * U, 0, 7); g.fill(); }
+    g.restore();
   }
-  function lancerBallon(or) {
-    const gauche = Math.random() < .5;
-    ballons.push({ x: gauche ? -30 * U : L + 30 * U, y: H * (.27 + Math.random() * .06), vx: (gauche ? 1 : -1) * (45 + Math.random() * 30) * U, or, c: ["#E0453F", "#3FB8E8", "#2E9E57", "#B05BE0", "#F08A1C"][Math.floor(Math.random() * 5)], ph: Math.random() * 6 });
+
+  // ---- Petits textes qui sautent (« ×3! ») ----
+  const textes = [];
+  const pop = (x, y, txt, c = "#fff", taille = 22) => textes.push({ x, y, txt, c, taille, t: .8 });
+
+  // ---- Bulles, ballons, prison, confettis ----
+  let bulles = [], ballons = [], confettis = [], geante = null, libres = 0, tirT = 0;
+  let pouvoir = { type: null, t: 0 }, prochainSpecial = PERIODE_SPECIAL * .6, cycleSpecial = [], secousse = 0, fiesta = false;
+  const eclats = new Eclats();
+  const liberations = [];
+  let coups = 0;
+  let aide = null, boss = null, bossFait = false, victoire = false;
+  let minis = [], etoiles = [], vague = -1, vagueFin = 0, prochainMini = 0, minisEclates = 0;
+  const cible = () => (boss && !boss.vaincu ? boss : geante);
+
+  function nouvelleGeante() {
+    if (fini || boss || bossFait) return;
+    if (performance.now() - debutJeu >= BOSS_DEBUT) { lancerBoss(); return; }
+    const a = prochainAnimal(), r = 64 * U;
+    // fissures (glace, ambre) préparées d'avance : elles apparaissent une à une
+    const fissures = Array.from({ length: 7 }, (_, i) => {
+      const an = i / 7 * 6.28 + Math.random() * .6, pts = [];
+      for (let k = 0; k <= 4; k++) { const d = r * (.2 + k * .2), j = (Math.random() - .5) * .35; pts.push([Math.cos(an + j) * d, Math.sin(an + j) * d]); }
+      return pts;
+    });
+    const feuilles = Array.from({ length: 14 }, (_, i) => ({ an: i / 14 * 6.28 + Math.random() * .2, seuil: (i * 5 % 14 + 1) / 15, c: ["#2E9E57", "#3E9B4F", "#56B868", "#237A43"][i % 4] }));
+    geante = { a, x: L / 2, y: -90 * U, cibleY: H * .15, r, pv: PV, pvMax: PV, tremble: 0, vx: 22 * U * (Math.random() < .5 ? 1 : -1), fissures, feuilles, etape: 0, age: 0 };
+  }
+  function lancerBallon(type = "n") {
+    const gauche = Math.random() < .5, special = type !== "n";
+    const vit = special ? 34 + Math.random() * 10 : 45 + Math.random() * 30;
+    ballons.push({ type, x: gauche ? -40 * U : L + 40 * U, y: H * (type === "gros" ? .3 : .27 + Math.random() * .06), vx: (gauche ? 1 : -1) * vit * U,
+      r: (type === "gros" ? 36 : special ? 24 : 20) * U, pv: type === "gros" ? 6 : 1, tremble: 0, c: ARC[Math.floor(Math.random() * ARC.length)], ph: Math.random() * 6 });
   }
   const bulle = (txt, ms, or) => messageJeu($("bulle"), txt, ms, or);
   function confetti(x, y, n, couleurs) {
@@ -92,170 +181,604 @@
     for (let i = 0; i < n; i++) { const a = Math.random() * 6.28, v = (2 + Math.random() * 6) * U; confettis.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 3 * U, t: 1.4, c: couleurs[i % couleurs.length], s: (5 + Math.random() * 5) * U, r: Math.random() * 6 }); }
   }
 
+  // ---- La rangée des animaux libérés, sur l'herbe : ils sautent de joie ----
+  const fans = [];
+  const MAX_FANS = () => Math.max(4, Math.floor((L - 20 * U) / (34 * U)));
+  const placeFan = (i, n) => L * (i + .5) / n;
+  const acclamer = () => fans.forEach((f, i) => (f.saut = 1 + i * .08));
+
   function liberer() {
-    const a = geante.a;
-    libres++; $("nb").textContent = libres; $("dernier").src = imgAnimal(a.n);
-    const t = $("total"); t.classList.remove("pop"); void t.offsetWidth; t.classList.add("pop");
-    confetti(geante.x, geante.y, 50, ["#E0453F", "#F2B90F", "#2E9E57", "#3FB8E8", "#B05BE0", "#fff"]);
-    sonBien(); vibre([25, 40, 25]);
+    const G = geante, a = G.a;
+    libres++; compteurPop($("total"), libres, $("nb")); $("dernier").src = imgAnimal(a.n);
+    liberations.push(Math.round((performance.now() - debutJeu) / 100) / 10);
+    confetti(G.x, G.y, 70, ["#E0453F", "#F2B90F", "#2E9E57", "#3FB8E8", "#B05BE0", "#fff"]);
+    eclats.jaillir(G.x, G.y, COUL_MONDE[a.m], 18, 1.3, 1.3); eclats.jaillir(G.x, G.y, "#fff", 10, 1.1);
+    secousse = .4; sonEclate(); vibrer([30, 40, 70]);
     const nom = nomMaj(a);
-    bulle(`¡${nom} es libre!`, 2000, true); dire(`¡Bravo! ¡${nom} es libre!`);
-    // l'animal saute hors de la bulle puis file vers le compteur
-    volants.push({ n: a.n, x: geante.x, y: geante.y, t: 0 });
+    bulle(`¡${nom} es libre!`, 2400, true); dire(`¡${nom} es libre!`);
+    volants.push({ a, x: G.x, y: G.y, t: 0, depart: Math.random() * 6.28 });
+    acclamer();
     geante = null; nouvellesPortes();
-    setTimeout(nouvelleGeante, 1400);
+    setTimeout(nouvelleGeante, 2600);
   }
   const volants = [];
 
+  // ---- Frapper la cible (prison ou Nubarrón) ----
+  function frapper(dmg, x, y) {
+    if (boss && !boss.vaincu) return frapperBoss(dmg, x, y);
+    const G = geante; if (!G) return;
+    G.pv -= dmg; G.tremble = 1;
+    if (!DOUX && Math.random() < .5) eclats.jaillir(x, y, "#fff", 1, .6, .6);
+    const d = 1 - Math.max(0, G.pv) / G.pvMax, etape = Math.floor(d * 8);
+    if (etape > G.etape) { G.etape = etape; sonFissure(); vibrer(8); eclats.jaillir(G.x + (Math.random() - .5) * G.r, G.y + G.r * .5, COUL_MONDE[G.a.m], 4, .8, .9); }
+    else if (Math.random() < .35) sonPlop(d);
+    if (G.pv <= 0) liberer();
+  }
+  function frapperBoss(dmg, x, y) {
+    const B = boss; B.pv -= dmg; B.tremble = 1;
+    if (!DOUX && Math.random() < .5) eclats.jaillir(x, y, "#fff", 1, .6, .6);
+    const d = 1 - Math.max(0, B.pv) / B.pvMax, etape = Math.floor(d * 12);
+    if (etape > B.etape) { B.etape = etape; sonFissure(); vibrer(8); if (etape % 2 === 0) pop(x, y, ["¡Zas!", "¡Toma!", "¡Pum!"][etape / 2 % 3], "#F2B90F", 20); }
+    else if (Math.random() < .3) sonPlop(d);
+  }
+
+  // ---- Un ballon qui éclate (par une bulle ou par un animal qui rebondit) ----
+  function eclaterBallon(j) {
+    const bl = ballons[j]; ballons.splice(j, 1); sonGlobo(); vibrer(15);
+    if (bl.type === "or") { confetti(bl.x, bl.yy, 30, ["#F2B90F", "#fff", "#F08A1C"]); pouvoir = { type: "or", t: 6 }; bulle("¡Súper burbujas!", 2000, true); dire("¡Súper burbujas!"); sonSpecial(); acclamer(); }
+    else if (bl.type === "arco") { confetti(bl.x, bl.yy, 36, ARC); pouvoir = { type: "arco", t: 5 }; bulle("¡Burbujas arcoíris!", 2000, true); dire("¡Burbujas arcoíris!"); sonSpecial(); acclamer(); }
+    else if (bl.type === "gros") {
+      confetti(bl.x, bl.yy, 40, ARC.concat("#fff")); sonSpecial(); vibrer([20, 30, 20]); acclamer();
+      bulle("¡Lluvia de globos!", 2000, true); dire("¡Lluvia de globos!");
+      for (let k = 0; k < 7; k++) { const a = k / 7 * 6.28; ballons.push({ type: "mini", x: bl.x + Math.cos(a) * 20 * U, y: bl.yy + Math.sin(a) * 20 * U, vx: Math.cos(a) * 55 * U, vy: (Math.sin(a) * 40 - 25) * U, r: 13 * U, pv: 1, tremble: 0, c: ARC[k % ARC.length], ph: 0 }); }
+    } else { confetti(bl.x, bl.yy, bl.type === "mini" ? 10 : 14, [bl.c, "#fff"]); pop(bl.x, bl.yy - bl.r, "¡Pop!", "#fff", 16); }
+  }
+
+  // ---- L'animal qui aide : il arrive après son tour d'honneur ----
+  function finirAide() {
+    if (!aide) return;
+    fans.push({ n: aide.a.n, x: aide.x, ph: Math.random() * 6, saut: 1, tirT: Math.random() });
+    while (fans.length > MAX_FANS()) fans.shift();
+    aide = null;
+  }
+  function lancerAide(a, x, y) {
+    finirAide();
+    aide = { a, type: familleDe(a.n), t: DUREE_AIDE, x, y, vx: (Math.random() < .5 ? -1 : 1) * 230 * U, vy: -330 * U, cycle: 0, frappe: false, cd: 0 };
+    const [court, phrase] = POUVOIRS[a.n] || ["¡Ayuda!", "te ayuda"];
+    bulle(`¡${court}!`, 2600, true); // court : l'animal est à côté du canon, la voix dit son nom dire(`¡${nomMaj(a)} ${phrase}!`); sonSpecial();
+  }
+  function majAide(dt, t, CY) {
+    const A = aide, C = cible();
+    A.t -= dt;
+    const ax = canon.x + (canon.x > L / 2 ? -52 : 52) * U, ay = CY - 8 * U;
+    let x = ax, y = ay, r = 20 * U, rot = 0;
+    if (A.type === "rebota") { // il rebondit partout : il éclate les ballons et cogne la cible
+      r = 24 * U; A.x += A.vx * dt; A.y += A.vy * dt;
+      if (A.x < r) A.vx = Math.abs(A.vx); if (A.x > L - r) A.vx = -Math.abs(A.vx);
+      if (A.y < H * .05 + r) A.vy = Math.abs(A.vy); if (A.y > H * .72) A.vy = -Math.abs(A.vy);
+      x = A.x; y = A.y; rot = A.t * 6;
+      for (let j = ballons.length - 1; j >= 0; j--) if (Math.hypot(ballons[j].x - x, ballons[j].yy - y) < ballons[j].r + r) eclaterBallon(j);
+      A.cd -= dt;
+      if (C && A.cd <= 0 && Math.hypot(C.x - x, C.y - y) < C.r + r) {
+        A.cd = .35; A.vy = Math.abs(A.vy); A.vx *= -1; pop(x, y - r, "¡Boing!", "#fff", 20); SONS_JEU.boing();
+        frapper(C === boss ? boss.pvMax * .02 : C.pvMax * .07, x, y);
+      }
+    } else if (A.type === "rompe" && C) { // il fonce sur la cible toutes les 1,5 s
+      A.cycle += dt; const ph = A.cycle % 1.5;
+      if (ph < .6) {
+        const k = Math.sin(ph / .6 * Math.PI); x = ax + (C.x - ax) * k; y = ay + (C.y + C.r * .4 - ay) * k; r = 26 * U; rot = k * .5;
+        if (ph >= .3 && !A.frappe) {
+          A.frappe = true; SONS_JEU.casse(); secousse = Math.max(secousse, .25); vibrer(25);
+          pop(x, y - 20 * U, "¡CRAC!", "#fff", 26); eclats.jaillir(x, y, "#fff", 8, 1.1);
+          frapper(C === boss ? boss.pvMax * .03 : C.pvMax * ([3, 18].includes(A.a.n) ? .14 : .1), x, y);
+        }
+      } else A.frappe = false;
+    } else if (A.type === "atrae" && C) { // tentacule ou langue : les bulles filent vers la cible (voir les bulles)
+      const l = .55 + .3 * Math.sin(t / 260), ex = x + (C.x - x) * l, ey = y + (C.y - y) * l;
+      g.strokeStyle = A.a.n === 8 ? "#E0607A" : "#E58C7A"; g.lineWidth = 7 * U; g.lineCap = "round";
+      g.beginPath(); g.moveTo(x, y); g.quadraticCurveTo((x + ex) / 2 + Math.sin(t / 200) * 30 * U, (y + ey) / 2, ex, ey); g.stroke();
+      g.fillStyle = g.strokeStyle; g.beginPath(); g.arc(ex, ey, 7 * U, 0, 7); g.fill();
+    } else if (A.type === "rapido" && !DOUX) { // traits de vitesse
+      g.strokeStyle = "rgba(255,255,255,.8)"; g.lineWidth = 3 * U; g.lineCap = "round";
+      for (let k = 0; k < 3; k++) { const yy = y - 10 * U + k * 10 * U, o = (t / 60 + k * 7) % 14; g.beginPath(); g.moveTo(x - 30 * U - o * U, yy); g.lineTo(x - 44 * U - o * U, yy); g.stroke(); }
+    }
+    if (A.type !== "rebota") { A.x = x; A.y = y; }
+    // l'anneau doré qui se vide : le temps qu'il reste au pouvoir
+    g.strokeStyle = "rgba(242,185,15,.9)"; g.lineWidth = 4 * U; g.beginPath(); g.arc(x, y, r * 1.35, -Math.PI / 2, -Math.PI / 2 + 6.283 * Math.max(0, A.t) / DUREE_AIDE); g.stroke();
+    const versA = C ? (C.x >= x ? 1 : -1) : 1;
+    const ecr = A.type === "rebota" ? 1 + Math.max(-.2, Math.min(.2, A.vy / (1600 * U))) : 1;
+    animal(A.a.n, x, y, r * 2.5, { vers: A.type === "rebota" ? (A.vx > 0 ? 1 : -1) : versA, rotation: Math.sin(rot) * .3, ecrase: ecr });
+    if (A.t <= 0) finirAide();
+  }
+
+  // ---- Le gran Nubarrón : costaud, il se protège et esquive, mais il ne fait rien et perd toujours ----
+  function bouclier(n) { boss.bouclier = Array.from({ length: n }, (_, i) => ({ an: i / n * 6.283, pv: TEST_RAPIDE ? 3 : 10, tremble: 0 })); }
+  const posBouclier = (B, s, t) => { const an = s.an + t / 1000 * (.8 + B.phase * .4); return [B.x + Math.cos(an) * B.r * 1.25, B.y + Math.sin(an) * B.r * .8]; };
+  function lancerBoss() {
+    bossFait = true;
+    const siens = DORES.filter((n) => POOL.includes(n)), liste = siens.length ? siens : DORES;
+    const a = animalN(liste[Math.floor(Math.random() * liste.length)]);
+    boss = { a, x: L / 2, y: -170 * U, cibleY: H * .18, r: 92 * U, pv: PV_BOSS, pvMax: PV_BOSS, debut: performance.now() - debutJeu,
+      tremble: 0, phase: 0, rugit: 1.5, sens: 1, reprotT: 3, esquive: 0, esquiveT: 4, eclair: 0, etape: 0, vaincu: false };
+    bouclier(4);
+    bulle("¡Llega el gran Nubarrón!", 2800, true); dire(`¡Oh, no! ¡El gran Nubarrón tiene ${a.es.startsWith("el ") ? "al " + a.es.slice(3) : "a " + a.es}! ¡Todos juntos, a disparar!`);
+    sonRugit(); secousse = .7; vibrer([40, 30, 40]);
+    acclamer();
+  }
+  function vaincreBoss() {
+    const B = boss; B.vaincu = true; victoire = true;
+    libres++; compteurPop($("total"), libres, $("nb")); $("dernier").src = imgAnimal(B.a.n);
+    confetti(B.x, B.y, 160, ["#E0453F", "#F2B90F", "#2E9E57", "#3FB8E8", "#B05BE0", "#fff"]);
+    eclats.jaillir(B.x, B.y, "#66728F", 30, 1.6, 1.6); eclats.jaillir(B.x, B.y, "#F2B90F", 20, 1.3, 1.2);
+    secousse = 1; sonEclate(); setTimeout(sonEclate, 300); setTimeout(sonSpecial, 700); vibrer([60, 50, 60, 50, 150]);
+    bulle("¡Has vencido al Nubarrón!", 3200, true); dire(`¡Has vencido al gran Nubarrón! ¡${nomMaj(B.a)} es libre!`);
+    volants.push({ a: B.a, x: B.x, y: B.y, t: 0, depart: Math.random() * 6.28 });
+    boss = null; fiesta = true; acclamer();
+  }
+  function majBoss(dt, t, ecoule) {
+    const B = boss;
+    B.y += (B.cibleY - B.y) * Math.min(1, dt * 2);
+    // la garantie : il ne peut jamais rester au-dessus de cette ligne
+    const lim = B.pvMax * Math.max(0, (BOSS_FIN - ecoule) / (BOSS_FIN - B.debut));
+    if (B.pv > lim) B.pv = lim;
+    const plancher = B.pvMax * Math.max(0, 1 - (ecoule - B.debut) / BOSS_MIN);
+    if (B.pv < plancher) { // il est en avance : le Nubarrón encaisse, et se reprotège de temps en temps
+      B.pv = plancher;
+      B.reprotT -= dt;
+      if (B.reprotT <= 0 && B.bouclier.every((s) => s.pv <= 0)) { B.reprotT = 5; bouclier(3 + B.phase); B.rugit = .8; sonRugit(); bulle("¡Grrr! ¡Se protege otra vez!", 1800, true); }
+    }
+    const f = Math.max(0, B.pv) / B.pvMax, phase = f < .34 ? 2 : f < .67 ? 1 : 0;
+    if (phase > B.phase) { B.phase = phase; B.rugit = 1.3; sonRugit(); secousse = .6; bouclier(phase === 1 ? 5 : 6); bulle(phase === 1 ? "¡Grrr! ¡Se protege!" : "¡Grrr! ¡Está furioso!", 2000, true); }
+    B.esquiveT -= dt; if (B.phase > 0 && B.esquiveT <= 0) { B.esquiveT = 3.5 + Math.random() * 2; B.esquive = .5; B.sens *= -1; pop(B.x, B.y - B.r, "¡Fiuu!", "#fff", 20); }
+    B.esquive = Math.max(0, B.esquive - dt);
+    const vit = [40, 60, 80][B.phase] * U * (B.esquive > 0 ? 3.5 : 1);
+    B.x += B.sens * vit * dt; if (B.x < B.r * .8) B.sens = 1; if (B.x > L - B.r * .8) B.sens = -1;
+    B.tremble = Math.max(0, B.tremble - dt * 5); B.rugit = Math.max(0, B.rugit - dt);
+    B.eclair -= dt; if (B.eclair < -1.5 - Math.random() * 3) B.eclair = .25;
+    for (const s of B.bouclier) s.tremble = Math.max(0, s.tremble - dt * 5);
+    if (B.pv <= 0) vaincreBoss();
+  }
+  const NUAGE = [[-.62, .12, .5], [-.32, -.28, .55], [.1, -.38, .6], [.5, -.18, .55], [.7, .18, .45], [0, .22, .62], [-.3, .32, .45], [.35, .32, .45]];
+  function nuage(r, couleur, bord) {
+    g.fillStyle = "#1E2A44"; for (const [x, y, k] of NUAGE) { g.beginPath(); g.arc(x * r, y * r, k * r + bord, 0, 7); g.fill(); }
+    g.fillStyle = couleur; for (const [x, y, k] of NUAGE) { g.beginPath(); g.arc(x * r, y * r, k * r, 0, 7); g.fill(); }
+    g.fillStyle = "rgba(255,255,255,.22)"; for (const [x, y, k] of NUAGE.slice(1, 4)) { g.beginPath(); g.arc(x * r - k * r * .2, y * r - k * r * .25, k * r * .55, 0, 7); g.fill(); }
+  }
+  function dessinerBoss(B, t) {
+    const r = B.r, f = Math.max(0, B.pv) / B.pvMax;
+    // petit éclair décoratif sous le nuage (il ne touche rien)
+    if (B.eclair > 0) {
+      const ex = B.x + Math.sin(t) * r * .4;
+      g.strokeStyle = "#FFE45C"; g.lineWidth = 5 * U; g.lineJoin = "round"; g.beginPath(); g.moveTo(ex, B.y + r * .6);
+      [[12, 20], [-10, 38], [10, 56], [-6, 72]].forEach(([dx, dy]) => g.lineTo(ex + dx * U, B.y + r * .6 + dy * U)); g.stroke();
+    }
+    const k = 1 + Math.sin(t / 400) * .03 + B.tremble * .04 + B.rugit * .06;
+    g.save(); g.translate(B.x, B.y + Math.sin(t / 600) * 6 * U); g.scale(k, 1 / k);
+    nuage(r, ["#8C99B5", "#72809E", "#5D6888"][B.phase], 4 * U);
+    // l'animal doré, dans une cage d'éclairs : les barreaux disparaissent à mesure qu'il faiblit
+    const ar = r * .33, ay = r * .2;
+    g.fillStyle = "#F2B90F"; g.beginPath(); g.arc(0, ay, ar + 6 * U, 0, 7); g.fill();
+    g.fillStyle = "#FFF4C2"; g.beginPath(); g.arc(0, ay, ar, 0, 7); g.fill();
+    animal(B.a.n, 0, ay, ar * 1.9, { rotation: Math.sin(t / 300) * .06 });
+    g.strokeStyle = "#FFE45C"; g.lineWidth = 3.5 * U; g.lineJoin = "round";
+    const barreaux = Math.ceil(f * 4);
+    for (let b = 0; b < barreaux; b++) { const bx = (-.6 + b * .4) * ar; g.beginPath(); g.moveTo(bx, ay - ar * .95); for (let z = 1; z <= 4; z++) g.lineTo(bx + (z % 2 ? 4 : -4) * U, ay - ar * .95 + z * ar * .48); g.stroke(); }
+    // la tête : des yeux qui suivent le canon, des sourcils froncés
+    const ox = Math.max(-1, Math.min(1, (canon.x - B.x) / (L * .5))) * r * .05;
+    for (const sx of [-1, 1]) {
+      g.fillStyle = "#fff"; g.beginPath(); g.ellipse(sx * r * .26, -r * .42, r * .13, r * .15, 0, 0, 7); g.fill();
+      g.fillStyle = "#1E2A44"; g.beginPath(); g.arc(sx * r * .26 + ox, -r * .38, r * .065, 0, 7); g.fill();
+      g.strokeStyle = "#1E2A44"; g.lineWidth = 6 * U; g.lineCap = "round"; g.beginPath(); g.moveTo(sx * r * .44, -r * .66 - B.rugit * 4 * U); g.lineTo(sx * r * .12, -r * .55); g.stroke();
+    }
+    g.fillStyle = "#1E2A44";
+    if (B.rugit > 0) { g.beginPath(); g.ellipse(0, -r * .19, r * .14, r * .07 + B.rugit * r * .04, 0, 0, 7); g.fill(); }
+    else { g.lineWidth = 4 * U; g.beginPath(); g.moveTo(-r * .1, -r * .2); g.quadraticCurveTo(0, -r * .25, r * .1, -r * .2); g.stroke(); }
+    g.restore();
+    // les petits nuages qui le protègent
+    for (const s of B.bouclier) {
+      if (s.pv <= 0) continue;
+      const [x, y] = posBouclier(B, s, t);
+      g.save(); g.translate(x, y); g.scale(1 + s.tremble * .15, 1 + s.tremble * .15); nuage(20 * U, "#6E7A96", 3 * U);
+      g.fillStyle = "#fff"; for (const sx of [-1, 1]) { g.beginPath(); g.arc(sx * 6 * U, -3 * U, 3 * U, 0, 7); g.fill(); }
+      g.restore();
+    }
+  }
+  function dessinerVieBoss(B) {
+    const w = L * .56, x = (L - w) / 2, y = 10 * U, h = 13 * U;
+    g.fillStyle = "rgba(30,42,68,.55)"; rect(x - 3 * U, y - 3 * U, w + 6 * U, h + 6 * U, 9 * U); g.fill();
+    g.fillStyle = "#B05BE0"; rect(x, y, w * Math.max(0, B.pv) / B.pvMax, h, 7 * U); g.fill();
+    g.font = `900 ${11 * U}px Lexend, system-ui`; g.textAlign = "center"; g.textBaseline = "middle"; g.fillStyle = "#fff"; g.fillText("GRAN NUBARRÓN", L / 2, y + h / 2 + .5);
+  }
+
+  // ---- Les Nubarroncitos : ils font des bêtises, ne touchent jamais Dorian, et éclatent en « ¡Puf! » ----
+  // voleur : part avec un ballon spécial (éclaté → il le lâche) ; pegajoso : se colle sous la prison comme un bouclier ;
+  // soplón : souffle sur les portes et les mélange.
+  function lancerMini(type) {
+    const gauche = Math.random() < .5;
+    const m = { type, x: gauche ? -30 * U : L + 30 * U, y: H * (type === "voleur" ? .3 + Math.random() * .15 : .12), vx: (gauche ? 1 : -1) * (type === "voleur" ? 55 : 100) * U, vy: 0,
+      pv: PV_MINI, tremble: 0, etat: "va", t: 0, ph: Math.random() * 6, ballon: type === "voleur" ? ["or", "arco", "gros"][Math.floor(Math.random() * 3)] : null };
+    minis.push(m);
+  }
+  function eclaterMini(i) {
+    const m = minis[i]; minis.splice(i, 1); minisEclates++;
+    sonGlobo(); note(300, 900, .15, .1, "triangle"); vibrer(20);
+    eclats.jaillir(m.x, m.y, "#7D8BA8", 12, 1.1); confetti(m.x, m.y, 14, ["#F2B90F", "#fff", "#7D8BA8"]);
+    pop(m.x, m.y - 20 * U, "¡Puf!", "#fff", 24); acclamer();
+    if (m.ballon) { // il lâche son ballon : Dorian en profite tout de suite
+      ballons.push({ type: m.ballon, x: m.x, y: m.y + 40 * U, yy: m.y + 40 * U, vx: 0, r: 24 * U, pv: 1, tremble: 0, c: "#F2B90F", ph: 0 });
+      eclaterBallon(ballons.length - 1);
+    } else etoiles.push({ x: m.x, y: m.y, vy: -120 * U, t: 0 }); // une étoile qui file vers le canon
+  }
+  function majMinis(dt, t, ecoule, CY) {
+    // début et fin de vague
+    if (vague + 1 < VAGUES.length && ecoule >= VAGUES[vague + 1]) {
+      vague++; vagueFin = ecoule + VAGUE_DUREE; prochainMini = ecoule;
+      bulle("¡Llegan los Nubarroncitos!", 2400, true); dire("¡Oh, no! ¡Los Nubarroncitos hacen travesuras! ¡Explótalos!");
+      sonRugit(); secousse = .3;
+    }
+    if (ecoule < vagueFin && ecoule >= prochainMini && minis.length < 3 && !fini) {
+      prochainMini = ecoule + (TEST_RAPIDE ? 1200 : 3200);
+      const types = ["voleur", "soplón"]; if (geante && !minis.some((m) => m.type === "pegajoso")) types.push("pegajoso", "pegajoso");
+      lancerMini(types[Math.floor(Math.random() * types.length)]);
+    }
+    const fin = ecoule >= vagueFin;
+    for (let i = minis.length - 1; i >= 0; i--) {
+      const m = minis[i]; m.t += dt; m.tremble = Math.max(0, m.tremble - dt * 5);
+      if (fin && m.etat !== "part") { m.etat = "part"; pop(m.x, m.y - 20 * U, "¡Jijí!", "#fff", 18); }
+      if (m.etat === "part") { m.y -= 160 * U * dt; if (m.y < -50 * U) { minis.splice(i, 1); continue; } }
+      else if (m.type === "voleur") {
+        m.x += m.vx * dt; m.y += Math.sin(m.t * 2 + m.ph) * 30 * U * dt;
+        if (m.x < -60 * U || m.x > L + 60 * U) { minis.splice(i, 1); continue; } // il s'en va avec son ballon, en riant
+      } else if (m.type === "pegajoso") {
+        if (!geante) { m.etat = "part"; continue; }
+        const tx = geante.x, ty = geante.y + geante.r * .78;
+        if (m.etat === "va") { const d = Math.hypot(tx - m.x, ty - m.y), v = 150 * U * dt; if (d < v + 2) { m.etat = "colle"; pop(m.x, m.y + 25 * U, "¡Pegado!", "#fff", 18); } else { m.x += (tx - m.x) / d * v; m.y += (ty - m.y) / d * v; } }
+        else { m.x = tx; m.y = ty; }
+      } else { // soplón
+        const tx = L / 2, ty = (portes[0]?.y ?? H * .6) + 8 * U;
+        if (m.etat === "va") { const d = Math.hypot(tx - m.x, ty - m.y), v = 110 * U * dt; if (d < v + 2) { m.etat = "souffle"; m.t = 0; } else { m.x += (tx - m.x) / d * v; m.y += (ty - m.y) / d * v; } }
+        else if (m.etat === "souffle" && m.t > 2.2) { m.etat = "part"; nouvellesPortes(); pop(m.x, m.y - 26 * U, "¡Fuuu!", "#fff", 24); bruitFiltre(500, .5, .6, .8); }
+      }
+      dessinerMini(m, t);
+    }
+    // les étoiles lâchées filent vers le canon : 3 s de súper burbujas
+    for (let i = etoiles.length - 1; i >= 0; i--) {
+      const e = etoiles[i]; e.t += dt;
+      const k = Math.min(1, e.t / .9), tx = canon.x, ty = CY - 30 * U;
+      e.x += (tx - e.x) * Math.min(1, dt * 2 + k * k * .3); e.y += e.vy * dt * (1 - k) + (ty - e.y) * Math.min(1, dt * 2 + k * k * .3);
+      if (Math.hypot(tx - e.x, ty - e.y) < 18 * U || e.t > 2) { etoiles.splice(i, 1); pouvoir = { type: "or", t: Math.max(pouvoir.type === "or" ? pouvoir.t : 0, 3) }; SONS_JEU.gemme(); continue; }
+      g.save(); g.translate(e.x, e.y); g.rotate(e.t * 5); g.fillStyle = "#F2B90F"; g.strokeStyle = "#fff"; g.lineWidth = 2.5 * U;
+      g.beginPath(); for (let k2 = 0; k2 < 10; k2++) { const a = k2 * Math.PI / 5 - Math.PI / 2, rr = (k2 % 2 ? 6 : 14) * U; g[k2 ? "lineTo" : "moveTo"](Math.cos(a) * rr, Math.sin(a) * rr); } g.closePath(); g.fill(); g.stroke(); g.restore();
+    }
+  }
+  function dessinerMini(m, t) {
+    const s = 1 + m.tremble * .15 + (m.etat === "souffle" ? Math.sin(t / 80) * .06 : 0);
+    if (m.ballon && m.etat !== "part") { // le ballon volé, au bout d'une ficelle
+      const bx = m.x + Math.sin(t / 300) * 4 * U, by = m.y + 48 * U;
+      g.strokeStyle = "rgba(30,42,68,.6)"; g.lineWidth = 1.5 * U; g.beginPath(); g.moveTo(m.x, m.y + 14 * U); g.lineTo(bx, by - 20 * U); g.stroke();
+      if (m.ballon === "arco") { g.save(); g.beginPath(); g.ellipse(bx, by, 17 * U, 20 * U, 0, 0, 7); g.clip(); ARC.forEach((c, k) => { g.fillStyle = c; g.fillRect(bx - 20 * U, by - 20 * U + k * 40 * U / ARC.length, 40 * U, 40 * U / ARC.length + 1); }); g.restore(); }
+      else { g.fillStyle = m.ballon === "or" ? "#F2B90F" : "#E0453F"; g.beginPath(); g.ellipse(bx, by, 17 * U, 20 * U, 0, 0, 7); g.fill(); }
+      g.strokeStyle = "#1E2A44"; g.lineWidth = 2 * U; g.beginPath(); g.ellipse(bx, by, 17 * U, 20 * U, 0, 0, 7); g.stroke();
+      if (m.ballon === "or") { g.fillStyle = "#fff"; g.font = `900 ${13 * U}px Lexend, system-ui`; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText("★", bx, by + 1); }
+    }
+    if (m.etat === "souffle") { // le vent
+      g.strokeStyle = "rgba(255,255,255,.85)"; g.lineWidth = 3 * U; g.lineCap = "round";
+      for (let k = 0; k < 4; k++) { const o = ((t / 300 + k * .25) % 1), yy = m.y + 26 * U + o * 40 * U, xx = m.x + (k - 1.5) * 22 * U; g.beginPath(); g.moveTo(xx, yy); g.quadraticCurveTo(xx + 8 * U, yy + 8 * U, xx, yy + 16 * U); g.stroke(); }
+    }
+    g.save(); g.translate(m.x, m.y + Math.sin(t / 250 + m.ph) * 3 * U); g.scale(s, s);
+    nuage(24 * U, m.type === "pegajoso" ? "#8A7DB0" : "#7D8BA8", 3 * U);
+    for (const sx of [-1, 1]) {
+      g.fillStyle = "#fff"; g.beginPath(); g.ellipse(sx * 7 * U, -5 * U, 4.5 * U, 5 * U, 0, 0, 7); g.fill();
+      g.fillStyle = "#1E2A44"; g.beginPath(); g.arc(sx * 7 * U + Math.sin(t / 400) * 1.2 * U, -4 * U, 2.3 * U, 0, 7); g.fill();
+      g.strokeStyle = "#1E2A44"; g.lineWidth = 2.5 * U; g.lineCap = "round"; g.beginPath(); g.moveTo(sx * 12 * U, -13 * U); g.lineTo(sx * 3 * U, -10 * U); g.stroke();
+    }
+    g.fillStyle = "#1E2A44";
+    if (m.etat === "souffle") { g.beginPath(); g.arc(0, 5 * U, 3.5 * U, 0, 7); g.fill(); }
+    else { g.lineWidth = 2.5 * U; g.beginPath(); g.arc(0, 2 * U, 5 * U, .2, Math.PI - .2); g.stroke(); } // sourire espiègle
+    g.restore();
+  }
+
+  // ---- Les prisons, une par monde ----
+  function dessinerPrison(G, t) {
+    const d = 1 - G.pv / G.pvMax, r = G.r, m = G.a.m;
+    const k = 1 + Math.sin(t / 300) * (.02 + d * .03) + G.tremble * .06;
+    g.save(); g.translate(G.x, G.y); g.scale(k, 1 / k);
+    // l'animal en entier, qui flotte dans sa prison (sur la couleur de son monde)
+    g.fillStyle = MILIEUX[m].fond; g.globalAlpha = .7; g.beginPath(); g.arc(0, 0, r * .9, 0, 7); g.fill(); g.globalAlpha = 1;
+    animal(G.a.n, 0, Math.sin(t / 500) * 3 * U, r * 1.45, { vers: G.vx > 0 ? 1 : -1, rotation: Math.sin(t / 700) * .08 });
+    if (m === "mar") { // une bulle d'eau, avec deux petits poissons qui tournent autour
+      const bg = g.createRadialGradient(-r * .3, -r * .3, r * .1, 0, 0, r);
+      bg.addColorStop(0, "rgba(255,255,255,.5)"); bg.addColorStop(.6, "rgba(150,210,255,.3)"); bg.addColorStop(1, `rgba(60,150,230,${.6 - d * .3})`);
+      g.fillStyle = bg; g.beginPath(); g.arc(0, 0, r, 0, 7); g.fill();
+      g.strokeStyle = "#fff"; g.lineWidth = 3 * U; g.stroke();
+      for (let i = 0; i < 2; i++) {
+        const a = t / 900 * (i ? -1 : 1) + i * Math.PI, x = Math.cos(a) * r * .86, y = Math.sin(a) * r * .86, dir = (i ? -1 : 1);
+        g.save(); g.translate(x, y); g.rotate(a + dir * Math.PI / 2);
+        g.fillStyle = i ? "#F08A1C" : "#F2B90F"; g.beginPath(); g.ellipse(0, 0, 9 * U, 5.5 * U, 0, 0, 7); g.fill();
+        g.beginPath(); g.moveTo(-7 * U * dir, 0); g.lineTo(-14 * U * dir, -5 * U); g.lineTo(-14 * U * dir, 5 * U); g.closePath(); g.fill();
+        g.fillStyle = "#1E2A44"; g.beginPath(); g.arc(4 * U * dir, -1.5 * U, 1.5 * U, 0, 7); g.fill();
+        g.restore();
+      }
+      // plus elle cède, plus des petites bulles s'échappent
+      g.fillStyle = "rgba(255,255,255,.8)";
+      for (let i = 0; i < Math.floor(d * 8); i++) { const a = i * 2.4 + t / 700, rr = r * (1.05 + ((t / 900 + i * .37) % 1) * .35); g.beginPath(); g.arc(Math.cos(a) * rr, Math.sin(a) * rr, (2 + i % 3) * U, 0, 7); g.fill(); }
+    } else if (m === "selva") { // un cocon de feuilles et de lianes : les feuilles tombent une à une
+      if (d < .6) {
+        g.strokeStyle = "#7A5A2B"; g.lineWidth = 5 * U; g.lineCap = "round";
+        g.beginPath(); g.moveTo(-r * .9, -r * .4); g.quadraticCurveTo(0, r * .1, r * .9, -r * .2); g.stroke();
+        g.beginPath(); g.moveTo(-r * .8, r * .5); g.quadraticCurveTo(0, r * .1, r * .85, r * .45); g.stroke();
+      }
+      for (const f of G.feuilles) {
+        if (d >= f.seuil) continue;
+        g.save(); g.rotate(f.an); g.translate(r * .84, 0); g.rotate(Math.PI / 2 + Math.sin(t / 500 + f.an) * .1);
+        g.fillStyle = f.c; g.beginPath(); g.ellipse(0, 0, r * .3, r * .15, 0, 0, 7); g.fill();
+        g.strokeStyle = "rgba(255,255,255,.55)"; g.lineWidth = 1.5 * U; g.beginPath(); g.moveTo(-r * .26, 0); g.lineTo(r * .26, 0); g.stroke();
+        g.restore();
+      }
+      g.strokeStyle = "rgba(255,255,255,.8)"; g.lineWidth = 2 * U; g.beginPath(); g.arc(0, 0, r * .99, 0, 7); g.stroke();
+    } else { // un bloc de glace (polos) ou une goutte d'ambre (gigantes), qui se fissure
+      const glace = m === "polos";
+      if (glace) rect(-r, -r, r * 2, r * 2, r * .35);
+      else { g.beginPath(); for (let i = 0; i < 7; i++) { const a = i / 7 * 6.28 - Math.PI / 2, rr = r * (i % 2 ? .97 : 1.03); g[i ? "lineTo" : "moveTo"](Math.cos(a) * rr, Math.sin(a) * rr); } g.closePath(); }
+      const bg = g.createLinearGradient(-r, -r, r, r);
+      if (glace) { bg.addColorStop(0, "rgba(255,255,255,.65)"); bg.addColorStop(1, "rgba(150,205,240,.6)"); }
+      else { bg.addColorStop(0, "rgba(255,215,110,.6)"); bg.addColorStop(1, "rgba(215,120,20,.62)"); }
+      g.fillStyle = bg; g.fill(); g.strokeStyle = "#fff"; g.lineWidth = 3 * U; g.lineJoin = "round"; g.stroke();
+      g.fillStyle = "rgba(255,255,255,.7)"; rect(-r * .75, -r * .82, r * .5, r * .12, r * .06); g.fill(); rect(-r * .82, -r * .6, r * .12, r * .4, r * .06); g.fill();
+      g.strokeStyle = glace ? "rgba(255,255,255,.95)" : "rgba(255,245,210,.95)"; g.lineWidth = 2.5 * U; g.lineCap = "round";
+      for (let i = 0; i < Math.floor(d * 8) && i < G.fissures.length; i++) { const f = G.fissures[i]; g.beginPath(); f.forEach(([x, y], j) => g[j ? "lineTo" : "moveTo"](x, y)); g.stroke(); }
+    }
+    g.restore();
+  }
+
+  // ---- Un animal en rond à bord blanc ----
+  // L'animal détouré, tenu dans une boîte de « taille » pixels, centré en (cx, cy). Sans sprite prêt : son rond.
+  function animal(n, cx, cy, taille, { vers = 1, rotation = 0, ecrase = 1 } = {}) {
+    const im = SPR[n];
+    if (!imagePrete(im)) return rond(n, cx, cy, taille * .42);
+    const h = taille * Math.min(1, im.naturalHeight / im.naturalWidth);
+    g.save(); g.translate(cx, cy); g.rotate(rotation);
+    dessinerSprite(g, im, n, 0, h / 2, h, { vers, ecrase, ombre: false });
+    g.restore();
+  }
+  function rond(n, x, y, r) {
+    g.save(); g.beginPath(); g.arc(x, y, r + Math.max(2, r * .09), 0, 7); g.fillStyle = "#fff"; g.fill();
+    g.beginPath(); g.arc(x, y, r, 0, 7); g.clip(); g.fillStyle = MILIEUX[animalN(n).m].fond; g.fillRect(x - r, y - r, r * 2, r * 2);
+    const im = IMGS[n]; if (imagePrete(im)) g.drawImage(im, x - r, y - r, r * 2, r * 2); g.restore();
+  }
+
   // ---- Boucle ----
   let avant = performance.now(), fini = false;
-  canon.x = canon.cible = L / 2; nouvellesPortes(); nouvelleGeante();
+  canon.x = canon.cible = L / 2; nouvellesPortes(); sortantes = []; nouvelleGeante();
   function boucle(t) {
     const dt = Math.min(.04, (t - avant) / 1000); avant = t;
+    const ecoule = t - debutJeu, prog = Math.min(1, ecoule / DUREE_JEU);
+    if (!bossFait && ecoule >= BOSS_DEBUT && geante) liberer(); // la dernière prison s'ouvre : place au Nubarrón
     canon.x += (canon.cible - canon.x) * Math.min(1, dt * 14);
-    superT = Math.max(0, superT - dt);
+    pouvoir.t = Math.max(0, pouvoir.t - dt);
+    const mode = pouvoir.t > 0 ? pouvoir.type : null;
     const CY = H - 62 * U;
     // tir automatique
     tirT -= dt;
     if (tirT <= 0 && !fini) {
-      tirT = superT > 0 ? .11 : .2; canon.recul = 1; sonTir();
-      const angles = superT > 0 ? [-.12, 0, .12] : [0];
-      for (const an of angles) bulles.push({ x: canon.x, y: CY - 30 * U, vx: Math.sin(an) * 520 * U, vy: -Math.cos(an) * 520 * U, r: (superT > 0 ? 11 : 9) * U, vues: new Set() });
+      tirT = (mode === "or" ? .11 : mode === "arco" ? .17 : .2) * (aide && aide.type === "rapido" ? .5 : 1); canon.recul = 1; sonTir();
+      const angles = mode === "or" ? [-.12, 0, .12] : mode === "arco" ? [-.42, -.21, 0, .21, .42] : [0];
+      angles.forEach((an, i) => bulles.push({ x: canon.x, y: CY - 30 * U, vx: Math.sin(an) * 520 * U, vy: -Math.cos(an) * 520 * U, r: (mode ? 11 : 9) * U, or: mode === "or", c: mode === "arco" ? ARC[(i + 1) % ARC.length] : null, vues: new Set() }));
     }
     canon.recul = Math.max(0, canon.recul - dt * 8);
-    // ballons : de temps en temps, et un doré toutes les ~20 s
-    if (Math.random() < dt * .45 && ballons.length < 4) lancerBallon(false);
-    if (t - dernierOr > 20000) { dernierOr = t; lancerBallon(true); }
+    // ballons : de plus en plus nombreux, une fiesta à la fin
+    const normaux = ballons.filter((b) => b.type === "n").length;
+    if (Math.random() < dt * (.45 + .45 * prog) * (fiesta ? 2.6 : boss ? .5 : 1) && normaux < (fiesta ? 8 : 4)) lancerBallon("n");
+    if (ecoule > prochainSpecial) {
+      prochainSpecial = ecoule + PERIODE_SPECIAL;
+      if (!cycleSpecial.length) cycleSpecial = melange(["or", "arco", "gros"]);
+      lancerBallon(cycleSpecial.pop());
+    }
+    // les portes changent de temps en temps
+    portesT += dt; if (portesT > PERIODE_PORTES) nouvellesPortes();
+    secousse = Math.max(0, secousse - dt);
 
-    // --- dessin du fond : un ciel doux avec des nuages
+    g.save();
+    if (secousse > 0 && !DOUX) g.translate((Math.random() - .5) * secousse * 18 * U, (Math.random() - .5) * secousse * 18 * U);
+    // --- fond : un ciel doux avec des nuages
     const gr = g.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, "#8EC5FF"); gr.addColorStop(1, "#D8ECFF");
-    g.fillStyle = gr; g.fillRect(0, 0, L, H);
+    g.fillStyle = gr; g.fillRect(-20, -20, L + 40, H + 40);
     g.fillStyle = "rgba(255,255,255,.7)";
     for (let i = 0; i < 3; i++) { const x = ((t / 60 * (i + 1) * .3) % (L + 160 * U)) - 80 * U, y = H * (.08 + i * .18); g.beginPath(); g.arc(x, y, 22 * U, 0, 7); g.arc(x + 26 * U, y - 8 * U, 28 * U, 0, 7); g.arc(x + 54 * U, y, 20 * U, 0, 7); g.fill(); }
-    g.fillStyle = "#58B947"; g.fillRect(0, H - 34 * U, L, 34 * U);
+    g.fillStyle = "#58B947"; g.fillRect(-20, H - 34 * U, L + 40, 34 * U + 20);
 
-    // --- portes
+    // --- portes (les anciennes rapetissent, les nouvelles apparaissent)
+    for (let i = sortantes.length - 1; i >= 0; i--) { const p = sortantes[i]; p.app -= dt * 4; if (p.app <= 0) { sortantes.splice(i, 1); continue; } dessinerPorte(p, t, p.app); }
     for (const p of portes) {
-      p.x = L * p.base + Math.sin(t / 1000 * p.vit + p.ph) * Math.max(0, L * .3 - p.w / 2 - 8 * U);
-      p.joie = Math.max(0, p.joie - dt * 4);
-      const fort = p.op[0] === "×", s = 1 + p.joie * .12;
-      g.save(); g.translate(p.x, p.y); g.scale(s, s);
-      g.fillStyle = fort ? "rgba(242,185,15,.85)" : "rgba(46,158,87,.85)";
-      rect(-p.w / 2, -p.h / 2, p.w, p.h, 14 * U); g.fill();
-      g.strokeStyle = "#fff"; g.lineWidth = 3 * U; g.stroke();
-      g.fillStyle = fort ? "#1E2A44" : "#fff"; g.font = `900 ${24 * U}px Lexend, system-ui`; g.textAlign = "center"; g.textBaseline = "middle";
-      g.fillText(p.op[0] + p.op[1], 0, 1 * U);
-      g.restore();
+      p.ph += dt * p.vit * (1 + .5 * prog);
+      p.x = L * p.base + Math.sin(p.ph) * Math.max(0, L * .3 - p.w / 2 - 8 * U);
+      p.joie = Math.max(0, p.joie - dt * 4); p.popT -= dt; p.app = Math.min(1, p.app + dt * 3);
+      const e = p.app < 1 ? 1 - Math.pow(1 - p.app, 3) * (1 - 1.6 * p.app) : 1; // petit rebond à l'apparition
+      dessinerPorte(p, t, e * (1 + p.joie * .12));
     }
 
     // --- ballons
     for (let i = ballons.length - 1; i >= 0; i--) {
-      const b = ballons[i]; b.x += b.vx * dt; const y = b.y + Math.sin(t / 400 + b.ph) * 8 * U;
-      if (b.x < -60 * U || b.x > L + 60 * U) { ballons.splice(i, 1); continue; }
-      b.yy = y;
-      const r = (b.or ? 24 : 20) * U;
-      g.strokeStyle = "rgba(30,42,68,.5)"; g.lineWidth = 1.5 * U; g.beginPath(); g.moveTo(b.x, y + r); g.quadraticCurveTo(b.x + 6 * U, y + r + 16 * U, b.x, y + r + 30 * U); g.stroke();
-      g.fillStyle = b.or ? "#F2B90F" : b.c; g.beginPath(); g.ellipse(b.x, y, r * .85, r, 0, 0, 7); g.fill();
-      g.strokeStyle = "#1E2A44"; g.lineWidth = 2.5 * U; g.stroke();
+      const b = ballons[i];
+      if (b.type === "mini") { b.x += b.vx * dt; b.y += b.vy * dt; b.vy -= 12 * U * dt; b.yy = b.y; if (b.y < -40 * U || b.x < -40 * U || b.x > L + 40 * U) { ballons.splice(i, 1); continue; } }
+      else { b.x += b.vx * dt; b.yy = b.y + Math.sin(t / 400 + b.ph) * 8 * U; if (b.x < -60 * U || b.x > L + 60 * U) { ballons.splice(i, 1); continue; } }
+      b.tremble = Math.max(0, b.tremble - dt * 5);
+      const y = b.yy, r = b.r * (1 + b.tremble * .08);
+      g.strokeStyle = "rgba(30,42,68,.5)"; g.lineWidth = 1.5 * U; g.beginPath(); g.moveTo(b.x, y + r); g.quadraticCurveTo(b.x + 6 * U, y + r + 16 * U, b.x, y + r + 30 * U * r / (20 * U)); g.stroke();
+      if (b.type === "arco") {
+        g.save(); g.beginPath(); g.ellipse(b.x, y, r * .85, r, 0, 0, 7); g.clip();
+        ARC.forEach((c, k) => { g.fillStyle = c; g.fillRect(b.x - r, y - r + k * r * 2 / ARC.length, r * 2, r * 2 / ARC.length + 1); });
+        g.restore();
+      } else { g.fillStyle = b.type === "or" ? "#F2B90F" : b.c; g.beginPath(); g.ellipse(b.x, y, r * .85, r, 0, 0, 7); g.fill(); }
+      g.strokeStyle = "#1E2A44"; g.lineWidth = (b.type === "gros" ? 3 : 2.5) * U; g.beginPath(); g.ellipse(b.x, y, r * .85, r, 0, 0, 7); g.stroke();
       g.fillStyle = "rgba(255,255,255,.55)"; g.beginPath(); g.ellipse(b.x - r * .3, y - r * .35, r * .18, r * .28, -.4, 0, 7); g.fill();
-      if (b.or) { g.fillStyle = "#fff"; g.font = `900 ${16 * U}px Lexend, system-ui`; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText("★", b.x, y + 1); }
+      if (b.type === "or") { g.fillStyle = "#fff"; g.font = `900 ${16 * U}px Lexend, system-ui`; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText("★", b.x, y + 1); }
+      if (b.type === "gros") { g.fillStyle = "#fff"; for (let k = 0; k < b.pv; k++) { const a = -Math.PI / 2 + (k - (b.pv - 1) / 2) * .45; g.beginPath(); g.arc(b.x + Math.cos(a) * r * .5, y + r * .15 + Math.sin(a) * r * .5, 3.5 * U, 0, 7); g.fill(); } }
     }
 
-    // --- bulle géante avec un animal dedans
+    // --- la prison, avec un animal dedans
     if (geante) {
       const G = geante;
+      G.age += dt;
       G.y += (G.cibleY - G.y) * Math.min(1, dt * 3);
-      G.x += G.vx * dt; if (G.x < G.r + 10 * U || G.x > L - G.r - 10 * U) G.vx *= -1;
+      G.x += G.vx * (1 + .5 * prog) * dt; if (G.x < G.r + 10 * U) G.vx = Math.abs(G.vx); if (G.x > L - G.r - 10 * U) G.vx = -Math.abs(G.vx);
       G.tremble = Math.max(0, G.tremble - dt * 5);
-      const k = 1 + Math.sin(t / 300) * .02 + G.tremble * .06;
-      g.save(); g.translate(G.x, G.y); g.scale(k, 1 / k);
-      g.save(); g.beginPath(); g.arc(0, 0, G.r * .78, 0, 7); g.clip();
-      g.fillStyle = MILIEUX[G.a.m].fond; g.fillRect(-G.r, -G.r, G.r * 2, G.r * 2);
-      const im = IMGS[G.a.n]; if (im?.complete && im.naturalWidth) g.drawImage(im, -G.r * .78, -G.r * .78, G.r * 1.56, G.r * 1.56);
-      g.restore();
-      const bg = g.createRadialGradient(-G.r * .3, -G.r * .3, G.r * .1, 0, 0, G.r);
-      bg.addColorStop(0, "rgba(255,255,255,.55)"); bg.addColorStop(.6, "rgba(190,230,255,.25)"); bg.addColorStop(1, "rgba(120,190,255,.55)");
-      g.fillStyle = bg; g.beginPath(); g.arc(0, 0, G.r, 0, 7); g.fill();
-      g.strokeStyle = "#fff"; g.lineWidth = 3 * U; g.stroke();
-      g.fillStyle = "rgba(255,255,255,.85)"; g.beginPath(); g.ellipse(-G.r * .45, -G.r * .5, G.r * .16, G.r * .09, -.6, 0, 7); g.fill();
-      g.restore();
-      // ce qu'il reste à faire : une barre qui se vide, pas un score
-      const bw = 90 * U, by = G.y + G.r + 10 * U;
-      g.fillStyle = "rgba(30,42,68,.35)"; rect(G.x - bw / 2, by, bw, 9 * U, 5 * U); g.fill();
-      g.fillStyle = "#F2B90F"; rect(G.x - bw / 2, by, bw * G.pv / G.pvMax, 9 * U, 5 * U); g.fill();
+      dessinerPrison(G, t);
+    }
+    if (boss) { majBoss(dt, t, ecoule); if (boss) dessinerBoss(boss, t); }
+    majMinis(dt, t, ecoule, CY);
+    // pendant le Nubarrón, toute la rangée tire avec lui
+    if (boss && !fini) for (const f of fans) {
+      f.tirT = (f.tirT ?? Math.random()) - dt;
+      if (f.tirT <= 0) { f.tirT = .8 + Math.random() * .4; f.saut = Math.max(f.saut, .35); bulles.push({ x: f.x, y: H - 34 * U, vx: (boss.x - f.x) * .35, vy: -500 * U, r: 7 * U, c: COUL_MONDE[animalN(f.n).m], vues: new Set() }); }
     }
 
     // --- bulles tirées
-    const max = bulles.length > 240;
+    const max = bulles.length > 180;
     for (let i = bulles.length - 1; i >= 0; i--) {
       const b = bulles[i], avantY = b.y;
+      if (aide && aide.type === "atrae") { const C = cible(); if (C && b.y > C.y) b.vx += ((C.x - b.x) * 5 - b.vx * .8) * dt; }
       b.x += b.vx * dt; b.y += b.vy * dt;
       if (b.x < b.r || b.x > L - b.r) { b.vx *= -1; b.x = Math.max(b.r, Math.min(L - b.r, b.x)); }
       if (b.y < -20 * U) { bulles.splice(i, 1); continue; }
       // passer une porte multiplie les bulles
       for (const p of portes) {
-        if (b.vues.has(p.id)) continue;
+        if (b.vues.has(p.id) || p.app < .5) continue;
         if (avantY >= p.y && b.y < p.y && Math.abs(b.x - p.x) < p.w / 2) {
-          b.vues.add(p.id); p.joie = 1; sonPorte(p.op[0] === "×");
+          b.vues.add(p.id); p.joie = 1; sonPorte(p.op[1]);
+          if (p.popT <= 0) { p.popT = .45; pop(p.x, p.y - p.h * .9, p.op[0] + p.op[1] + "!", p.op[1] >= 5 ? "#F2B90F" : "#fff", p.op[1] >= 5 ? 28 : 22); }
           const n = max ? 0 : valeur(p, 1) - 1;
-          for (let k = 0; k < n; k++) bulles.push({ x: b.x + (k - (n - 1) / 2) * 10 * U, y: b.y - 4 * U, vx: b.vx + (k - (n - 1) / 2) * 70 * U, vy: b.vy * (.92 + Math.random() * .1), r: b.r, vues: new Set(b.vues) });
+          for (let k = 0; k < n; k++) bulles.push({ x: b.x + (k - (n - 1) / 2) * 10 * U, y: b.y - 4 * U, vx: b.vx + (k - (n - 1) / 2) * 70 * U, vy: b.vy * (.92 + Math.random() * .1), r: b.r, or: b.or, c: b.c, vues: new Set(b.vues) });
         }
+      }
+      // les Nubarroncitos
+      let mi = -1;
+      for (let j = minis.length - 1; j >= 0; j--) { const m = minis[j]; if (m.etat !== "part" && Math.hypot(b.x - m.x, b.y - m.y) < 26 * U + b.r) { mi = j; break; } }
+      if (mi >= 0) {
+        const m = minis[mi]; bulles.splice(i, 1); m.pv--; m.tremble = 1;
+        if (m.pv <= 0) eclaterMini(mi); else if (Math.random() < .5) sonPlop(.4);
+        continue;
       }
       // ballons
       let touche = false;
       for (let j = ballons.length - 1; j >= 0; j--) {
         const bl = ballons[j];
-        if (Math.hypot(b.x - bl.x, b.y - (bl.yy ?? bl.y)) < 22 * U + b.r) {
-          ballons.splice(j, 1); sonGlobo(); vibre(15);
-          confetti(bl.x, bl.yy ?? bl.y, bl.or ? 30 : 14, bl.or ? ["#F2B90F", "#fff", "#F08A1C"] : [bl.c, "#fff"]);
-          if (bl.or) { superT = 6; bulle("¡Súper burbujas!", 2000, true); dire("¡Súper burbujas!"); sonBien(); }
-          touche = true; break;
+        if (Math.hypot(b.x - bl.x, b.y - bl.yy) < bl.r + b.r) {
+          touche = true; bl.pv--; bl.tremble = 1;
+          if (bl.pv > 0) { sonPlop(.5); break; }
+          eclaterBallon(j);
+          break;
         }
       }
       if (touche) { bulles.splice(i, 1); continue; }
-      // bulle géante
+      // la prison
       if (geante && Math.hypot(b.x - geante.x, b.y - geante.y) < geante.r + b.r) {
-        bulles.splice(i, 1); geante.pv--; geante.tremble = 1; if (Math.random() < .3) sonPlop();
-        if (geante.pv <= 0) liberer();
+        bulles.splice(i, 1); coups++;
+        frapper(geante.age > 20 ? 4 : geante.age > 14 ? 2 : 1, b.x, b.y); // si ça traîne, ça cède plus vite
         continue;
       }
-      g.fillStyle = superT > 0 ? "rgba(255,236,150,.75)" : "rgba(255,255,255,.65)";
+      // le Nubarrón : d'abord ses petits nuages qui le protègent
+      if (boss && !boss.vaincu) {
+        let bloque = false;
+        for (const s of boss.bouclier) {
+          if (s.pv <= 0) continue;
+          const [x, y] = posBouclier(boss, s, t);
+          if (Math.hypot(b.x - x, b.y - y) < 22 * U + b.r) {
+            bloque = true; s.pv--; s.tremble = 1;
+            if (s.pv <= 0) { sonGlobo(); vibrer(15); eclats.jaillir(x, y, "#6E7A96", 10, 1); pop(x, y, "¡Puf!", "#fff", 20); } else if (Math.random() < .4) sonPlop(.3);
+            break;
+          }
+        }
+        if (bloque) { bulles.splice(i, 1); continue; }
+        if (Math.hypot(b.x - boss.x, b.y - boss.y) < boss.r * .85 + b.r) { bulles.splice(i, 1); coups++; frapper(1, b.x, b.y); continue; }
+      }
+      g.fillStyle = b.or ? "rgba(255,236,150,.8)" : b.c ? b.c + "B0" : "rgba(255,255,255,.65)";
       g.beginPath(); g.arc(b.x, b.y, b.r, 0, 7); g.fill();
-      g.strokeStyle = superT > 0 ? "#F2B90F" : "#3F72CF"; g.lineWidth = 2 * U; g.stroke();
+      g.strokeStyle = b.or ? "#F2B90F" : b.c ? "#fff" : "#3F72CF"; g.lineWidth = 2 * U; g.stroke();
       g.fillStyle = "#fff"; g.beginPath(); g.arc(b.x - b.r * .35, b.y - b.r * .35, b.r * .25, 0, 7); g.fill();
     }
 
-    // --- animaux libérés qui volent vers le compteur
+    // --- la rangée des animaux libérés
+    const nF = fans.length + volants.length + (aide ? 1 : 0);
+    fans.forEach((f, i) => {
+      f.x += (placeFan(i, Math.max(nF, 1)) - f.x) * Math.min(1, dt * 4);
+      f.saut = Math.max(0, f.saut - dt * 1.4);
+      const sautille = DOUX ? 0 : Math.abs(Math.sin(t / 300 + f.ph)) * 3 * U;
+      const joie = f.saut > 0 && f.saut <= 1 ? Math.sin(f.saut * Math.PI * 2) ** 2 * 18 * U : 0;
+      const vers = f.x < L / 2 ? 1 : -1, saute = sautille + joie;
+      if (MARINS.includes(f.n)) { // dans sa petite bulle d'eau
+        const by = H - 24 * U - saute;
+        g.fillStyle = "rgba(150,210,255,.55)"; g.beginPath(); g.arc(f.x, by, 17 * U, 0, 7); g.fill();
+        animal(f.n, f.x, by, 26 * U, { vers });
+        g.strokeStyle = "#fff"; g.lineWidth = 2 * U; g.beginPath(); g.arc(f.x, by, 17 * U, 0, 7); g.stroke();
+        g.fillStyle = "rgba(255,255,255,.85)"; g.beginPath(); g.ellipse(f.x - 7 * U, by - 8 * U, 3.5 * U, 2 * U, -.6, 0, 7); g.fill();
+      } else { // debout sur ses pattes, avec son ombre
+        const im = SPR[f.n];
+        if (imagePrete(im)) { const h = 32 * U * Math.min(1, im.naturalHeight / im.naturalWidth); dessinerSprite(g, im, f.n, f.x, H - 6 * U - saute, h, { vers, ecrase: joie > 4 * U ? 1.08 : 1, ombre: saute < 3 * U }); }
+        else rond(f.n, f.x, H - 17 * U - saute, 14 * U);
+      }
+    });
+
+    // --- tour d'honneur : l'animal libéré grossit, fait une boucle, puis rejoint la rangée
     for (let i = volants.length - 1; i >= 0; i--) {
       const v = volants[i]; v.t += dt;
-      let x = v.x, y = v.y, r = 46 * U;
-      if (v.t < .8) { y -= Math.sin(v.t / .8 * Math.PI) * 30 * U; r *= 1 + Math.sin(Math.min(1, v.t / .3) * Math.PI) * .2; }
-      else { const k = Math.min(1, (v.t - .8) / .6), e = k * k; x += (L - 30 * U - x) * e; y += (-30 * U - y) * e; r *= 1 - .6 * k; if (k >= 1) { volants.splice(i, 1); continue; } }
-      g.save(); g.beginPath(); g.arc(x, y, r + 4 * U, 0, 7); g.fillStyle = "#fff"; g.fill();
-      g.beginPath(); g.arc(x, y, r, 0, 7); g.clip(); g.fillStyle = MILIEUX[animalN(v.n).m].fond; g.fillRect(x - r, y - r, r * 2, r * 2);
-      const im = IMGS[v.n]; if (im?.complete && im.naturalWidth) g.drawImage(im, x - r, y - r, r * 2, r * 2); g.restore();
+      let x = v.x, y = v.y, r = 46 * U, rot = 0;
+      const cx = L / 2, cy = H * .4, R = Math.min(L * .3, 110 * U);
+      const surCercle = (u) => [cx + Math.cos(v.depart + u * 6.28) * R, cy + Math.sin(v.depart + u * 6.28) * R * .6];
+      if (v.t < .4) { const k = v.t / .4; r = (40 + 18 * Math.sin(k * Math.PI / 2)) * U; y -= k * 10 * U; }
+      else if (v.t < 1.7) {
+        const u = (v.t - .4) / 1.3, [px, py] = surCercle(u), w = Math.min(1, u / .25);
+        x = v.x + (px - v.x) * w; y = v.y - 10 * U + (py - v.y + 10 * U) * w; r = 58 * U; rot = Math.sin(v.t * 10) * .15;
+        if (!DOUX && Math.random() < .6) eclats.jaillir(x, y + r * .6, Math.random() < .5 ? "#F2B90F" : "#fff", 1, .5, .7);
+      } else {
+        const k = Math.min(1, (v.t - 1.7) / .7), e = k < .5 ? 2 * k * k : 1 - (-2 * k + 2) ** 2 / 2, [px, py] = surCercle(1);
+        const place = fans.length + i, tx = placeFan(place, Math.max(nF, 1)), ty = H - 17 * U;
+        x = px + (tx - px) * e; y = py + (ty - py) * e - Math.sin(k * Math.PI) * 40 * U; r = 58 * U + (14 - 58) * U * e;
+        if (k >= 1) {
+          volants.splice(i, 1);
+          if (fini) { fans.push({ n: v.a.n, x: tx, ph: Math.random() * 6, saut: 1 }); while (fans.length > MAX_FANS()) fans.shift(); }
+          else lancerAide(v.a, tx, ty);
+          continue;
+        }
+      }
+      if (r > 20 * U) { g.fillStyle = "rgba(255,255,255,.35)"; g.beginPath(); g.arc(x, y, r * .95, 0, 7); g.fill(); } // un halo de joie
+      animal(v.a.n, x, y, r * 2.1, { rotation: rot, vers: Math.cos(v.depart + Math.max(0, v.t - .4) / 1.3 * 6.28) < 0 ? 1 : -1 });
     }
 
-    // --- confettis
+    if (aide) majAide(dt, t, CY);
+
+    // --- éclats, confettis, petits textes
+    eclats.dessiner(g, dt);
     for (let i = confettis.length - 1; i >= 0; i--) {
       const c = confettis[i]; c.x += c.vx; c.y += c.vy; c.vy += .18 * U; c.vx *= .99; c.t -= dt; c.r += .15;
       if (c.t <= 0) { confettis.splice(i, 1); continue; }
       g.save(); g.globalAlpha = Math.min(1, c.t * 2); g.translate(c.x, c.y); g.rotate(c.r); g.fillStyle = c.c; g.fillRect(-c.s / 2, -c.s / 4, c.s, c.s / 2); g.restore();
     }
+    g.textAlign = "center"; g.textBaseline = "middle";
+    for (let i = textes.length - 1; i >= 0; i--) {
+      const x = textes[i]; x.t -= dt; x.y -= 40 * U * dt; if (x.t <= 0) { textes.splice(i, 1); continue; }
+      const s = x.t > .65 ? 1 + (x.t - .65) * 3 : 1;
+      g.save(); g.globalAlpha = Math.min(1, x.t * 3); g.translate(x.x, x.y); g.scale(s, s);
+      g.font = `900 ${x.taille * U}px Lexend, system-ui`; g.lineWidth = 5 * U; g.strokeStyle = "#1E2A44"; g.lineJoin = "round";
+      g.strokeText(x.txt, 0, 0); g.fillStyle = x.c; g.fillText(x.txt, 0, 0); g.restore();
+    }
 
-    // --- le canon (avec son animal préféré dessus : le dernier libéré)
+    // --- le canon
     const rc = canon.recul * 6 * U;
     g.save(); g.translate(canon.x, CY + rc);
     g.strokeStyle = "#1E2A44"; g.lineWidth = 3 * U; g.lineJoin = "round";
-    g.fillStyle = superT > 0 ? "#F2B90F" : "#3F72CF"; rect(-16 * U, -46 * U, 32 * U, 44 * U, 10 * U); g.fill(); g.stroke();
+    g.fillStyle = mode === "or" ? "#F2B90F" : mode === "arco" ? ARC[Math.floor(t / 120) % ARC.length] : "#3F72CF";
+    rect(-16 * U, -46 * U, 32 * U, 44 * U, 10 * U); g.fill(); g.stroke();
     g.fillStyle = "#fff"; rect(-20 * U, -52 * U, 40 * U, 12 * U, 6 * U); g.fill(); g.stroke();
     g.fillStyle = "#E0453F"; g.beginPath(); g.arc(0, 4 * U, 30 * U, Math.PI, 0); g.closePath(); g.fill(); g.stroke();
     g.fillStyle = "#1E2A44"; for (const dx of [-20, 20]) { g.beginPath(); g.arc(dx * U, 6 * U, 9 * U, 0, 7); g.fill(); }
     g.restore();
+    if (boss && !boss.vaincu) dessinerVieBoss(boss);
     if (!posé && !fini) { // petite main qui montre le geste au début
       const hx = L / 2 + Math.sin(t / 500) * 60 * U, hy = CY + 8 * U;
       g.fillStyle = "rgba(255,255,255,.9)"; g.beginPath(); g.arc(hx, hy, 14 * U, 0, 7); g.fill(); g.strokeStyle = "#1E2A44"; g.lineWidth = 2.5 * U; g.stroke();
     }
+    g.restore();
     if (!fini) requestAnimationFrame(boucle);
   }
   requestAnimationFrame(boucle);
@@ -263,9 +786,20 @@
   dire("¡Cañón de burbujas! Mueve el cañón con el dedo. Pasa por las puertas mágicas y libera a tus animales.");
 
   // ---- Minuteur : 3 min, « ¡Último minuto! » 30 s avant, puis la ballena ----
-  minuteurJeu({ barre: $("barre"), bandeau: $("ultimo"), annonce: "¡Último minuto! Libera un animal más.",
-    surFin: () => { fini = true; finDePause($("fin"), "¡Qué buen rescate!", libres === 1 ? "Has liberado a un animal." : `Has liberado a ${libres} animales.`); } });
-  if (TEST_RAPIDE) window.burbujas = { get libres() { return libres; }, get bulles() { return bulles.length; }, get geante() { return geante && geante.pv; } };
+  minuteurJeu({ barre: $("barre"), bandeau: $("ultimo"), annonce: "¡Último minuto! ¡Vamos, todos juntos!",
+    surFin: () => { fini = true; finDePause($("fin"), "¡Qué buen rescate!", (libres === 1 ? "Has liberado a un animal" : `Has liberado a ${libres} animales`) + (victoire ? " y has vencido al gran Nubarrón." : ".")); } });
+  if (TEST_RAPIDE) window.burbujas = {
+    get libres() { return libres; }, get bulles() { return bulles.length; }, get geante() { return geante && geante.pv; },
+    get fans() { return fans.map((f) => f.n).join(","); }, get liberations() { return liberations; }, get ballons() { return ballons.map((b) => b.type); },
+    get portes() { return portes.map((p) => p.op.join("")); }, get pouvoir() { return pouvoir.t > 0 ? pouvoir.type : null; },
+    ratees: () => ratees, get coups() { return coups; }, get gx() { return geante ? Math.round(geante.x) : null; }, imgs: () => Object.entries(IMGS).map(([n, i]) => n + ":" + imagePrete(i)).join(" "),
+    abimer: (d) => { if (geante) { geante.pv = Math.round(geante.pvMax * (1 - d)); geante.etape = Math.floor(d * 8); } },
+    lancer: lancerBallon, liberer: () => geante && liberer(),
+    get aide() { return aide && aide.type + ":" + aide.a.n; }, get boss() { return boss ? Math.round(boss.pv) + "/" + boss.pvMax + " phase " + boss.phase : bossFait ? (victoire ? "vaincu" : "fini") : null; },
+    get victoire() { return victoire; }, get minis() { return minis.map((m) => m.type + ":" + m.etat + ":" + m.pv + "@" + Math.round(m.x) + "," + Math.round(m.y)).join(" "); }, get minisEclates() { return minisEclates; },
+    vagues: VAGUES, mini: (type) => { vagueFin = Math.max(vagueFin, performance.now() - debutJeu + 10000); lancerMini(type); }, aider: (n) => lancerAide(animalN(n), L / 2, H * .7), nubarron: () => { if (geante) geante = null; if (!boss) lancerBoss(); },
+    monde: (m) => { const n = ANIMAUX.find((a) => a.m === m).n; if (geante) { geante.a = animalN(n); } },
+  };
 })();
 </script>
 </body>
