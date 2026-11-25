@@ -168,9 +168,10 @@ const Sync = (() => {
   // { minutos: 5 | 10, libreEnBonus: bool, maxMinutos: 15 }. « libreEnBonus » : une partie offerte ou bonus
   // dure jusqu'à la fin du jeu, avec une limite de 15 min ; jamais entre deux séances.
   // Sans réglage (pas encore branché, ancien script), 5 min et pas de mode libre.
+  // trabajo : le temps de travail minimum avant la pause (10, 15 ou 20 min ; 10 par défaut).
   function pausa() {
     const p = (ajustes() || {}).pausa || {};
-    return { minutos: p.minutos === 10 ? 10 : 5, libreEnBonus: !!p.libreEnBonus, maxMinutos: 15 };
+    return { minutos: p.minutos === 10 ? 10 : 5, libreEnBonus: !!p.libreEnBonus, maxMinutos: 15, trabajo: [15, 20].includes(p.trabajo) ? p.trabajo : 10 };
   }
 
   return { pausa, lien, lireLien, brancher, fusionnerProgreso, synchroniserProgreso, lienBranchement, lireProgreso, ajouterProgreso, debrancher, ajustes, rafraichirAjustes, guardarAjustes, sesiones, enAttente, encoler, vider };

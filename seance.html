@@ -20,6 +20,8 @@
   main.ecran{height:100dvh;min-height:0;overflow:hidden}
   #scene{flex:1;min-height:0;display:flex;flex-direction:column;gap:16px}
   .entre{animation:entre .45s var(--ease) both}
+  /* Anti-précipitation : les réponses attendent la fin de la voix (et ~1,5 s après une erreur). Léger, jamais punitif. */
+  .attente{pointer-events:none;opacity:.55;transition:opacity .3s}
   @keyframes entre{from{opacity:0;transform:translateY(12px)}}
 
   /* Descubre */
@@ -216,10 +218,10 @@
 
 <script src="commun.js?v=10"></script>
 <script src="lecons.js?v=11"></script>
-<script src="maths.js?v=14"></script>
+<script src="maths.js?v=15"></script>
 <script src="animaux.js?v=12"></script>
-<script src="sync.js?v=4"></script>
-<script src="deberes.js?v=4"></script>
-<script src="moteur.js?v=15"></script>
+<script src="sync.js?v=5"></script>
+<script src="deberes.js?v=5"></script>
+<script src="moteur.js?v=16"></script>
 </body>
 </html>

@@ -58,11 +58,14 @@ async function palitos(e) {
       const opts = melange([q.n, u * 10 + d === q.n ? q.n + 1 : u * 10 + d, q.n + (d < 9 ? 10 : -10)]);
       const boutons = opts.map((o) => { const b = document.createElement("button"); b.className = "mot"; b.textContent = o; liste.append(b); return b; });
       scene.append(zone, liste);
-      consigne("¿Qué número es?", () => dire("¿Qué número es? Cada paquete tiene diez palitos."));
+      const g = garde(boutons);
+      g.ouvrir(consigne("¿Qué número es?", () => dire("¿Qué número es? Cada paquete tiene diez palitos.")));
       const bonne = boutons.find((b) => +b.textContent === q.n);
+      let finie = false;
       await new Promise((fini) => boutons.forEach((b) => b.addEventListener("click", async () => {
-        if (b === bonne) { b.classList.add("bonne"); sonBien(); await dire(`¡Sí! ${du(q.n)}: ${q.n}.`); await attendre(300); fini(); }
-        else { montrer(bonne); rate(e, "mates", "palitos"); dire(`Cuenta los paquetes: ${d} decenas. Y los palitos sueltos: ${u} unidades.`); }
+        if (!g.peut() || finie) return;
+        if (b === bonne) { finie = true; g.reponse(true); b.classList.add("bonne"); sonBien(); await dire(`¡Sí! ${du(q.n)}: ${q.n}.`); await attendre(300); fini(); }
+        else { montrer(bonne); rate(e, "mates", "palitos"); g.reponse(false, dire(`Cuenta los paquetes: ${d} decenas. Y los palitos sueltos: ${u} unidades.`)); }
       })));
     } else {
       // Construire le nombre avec des paquets et des bâtonnets.
@@ -152,11 +155,14 @@ async function choixDeux(q, voix, a, b, bonneTxt, aide, tipo) {
   const liste = document.createElement("div"); liste.className = "mots deux";
   const boutons = [a, b].map((o) => { const x = document.createElement("button"); x.className = "mot"; x.textContent = o; liste.append(x); return x; });
   scene.append(qt, liste);
-  dire(voix);
+  const g = garde(boutons);
+  g.ouvrir(dire(voix));
   const bonne = boutons.find((x) => x.textContent === bonneTxt);
+  let finie = false;
   await new Promise((fini) => boutons.forEach((x) => x.addEventListener("click", async () => {
-    if (x === bonne) { x.classList.add("bonne"); sonBien(); await attendre(500); fini(); }
-    else { montrer(bonne); dire(aide); if (tipo) rate(null, "mates", tipo); }
+    if (!g.peut() || finie) return;
+    if (x === bonne) { finie = true; g.reponse(true); x.classList.add("bonne"); sonBien(); await attendre(500); fini(); }
+    else { montrer(bonne); if (tipo) rate(null, "mates", tipo); g.reponse(false, dire(aide)); }
   })));
 }
 
@@ -205,11 +211,13 @@ async function pbColumnas(p) {
   ];
   for (const et of etapes) {
     const cel = g.querySelector(et.cel); cel.classList.add("suivant");
-    consigne(et.txt, () => dire(et.voix));
-    let ratés = 0;
+    const gp = garde([pave]);
+    gp.ouvrir(consigne(et.txt, () => dire(et.voix)));
+    let ratés = 0, finie = false;
     await new Promise((fini) => pave.querySelectorAll("button").forEach((b) => b.onclick = async () => {
-      if (+b.textContent === et.bon) { cel.textContent = et.bon; cel.classList.remove("suivant"); cel.classList.add("rempli"); aide.innerHTML = ""; sonBien(); await attendre(400); fini(); }
-      else { ratés++; rate(null, "mates", et.tipo); aide.innerHTML = et.aide(); dire(p.op === "+" ? "Cuenta todos los palitos." : "Cuenta los palitos que no están tachados."); }
+      if (!gp.peut() || finie) return;
+      if (+b.textContent === et.bon) { finie = true; gp.reponse(true); cel.textContent = et.bon; cel.classList.remove("suivant"); cel.classList.add("rempli"); aide.innerHTML = ""; sonBien(); await attendre(400); fini(); }
+      else { ratés++; rate(null, "mates", et.tipo); aide.innerHTML = et.aide(); gp.reponse(false, dire(p.op === "+" ? "Cuenta todos los palitos." : "Cuenta los palitos que no están tachados.")); }
     }));
   }
   await dire(`${p.a} ${p.op === "+" ? "más" : "menos"} ${p.b}, igual a ${p.r}.`);
@@ -223,11 +231,15 @@ async function pbSolucion(p) {
   const faux = p.op === "+" ? Math.abs(p.a - p.b) : p.a + p.b;
   const boutons = melange([p.r, faux, p.r + 10]).map((o) => { const b = document.createElement("button"); b.className = "mot"; b.textContent = o; liste.append(b); return b; });
   scene.append(phrase, liste);
-  consigne("Solución", () => dire(`Solución. ${p.sol}… ¿cuántos ${p.unite}?`));
+  const g = garde(boutons);
+  g.ouvrir(consigne("Solución", () => dire(`Solución. ${p.sol}… ¿cuántos ${p.unite}?`)));
   const bonne = boutons.find((b) => +b.textContent === p.r);
+  let finie = false;
   await new Promise((fini) => boutons.forEach((b) => b.addEventListener("click", async () => {
-    if (b === bonne) { b.classList.add("bonne"); phrase.querySelector(".trou-sol").textContent = p.r; sonBien(); await dire(`${p.sol} ${p.r} ${p.unite}.`); await attendre(400); fini(); }
-    else { montrer(bonne); dire(`Mira la operación: el resultado es ${p.r}.`); }
+    if (!g.peut() || finie) return;
+    if (b === bonne) {
+      finie = true; g.reponse(true); b.classList.add("bonne"); phrase.querySelector(".trou-sol").textContent = p.r; sonBien(); await dire(`${p.sol} ${p.r} ${p.unite}.`); await attendre(400); fini(); }
+    else { montrer(bonne); g.reponse(false, dire(`Mira la operación: el resultado es ${p.r}.`)); }
   })));
 }
 

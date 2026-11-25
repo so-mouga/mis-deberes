@@ -136,6 +136,7 @@ const Deberes = (() => {
       id: s.id, fecha: s.fecha, leccion: s.leccion, titulo: s.titulo, inicio: s.inicio, fin,
       minutos: Math.max(1, Math.round((new Date(fin) - new Date(s.inicio)) / 60000)),
       pausas: s.pausas, terminada, aparato: Sync.lien()?.nombre || "",
+      avisos: s.avisos || [], // « rapida » (séance anormalement rapide), « azar » (beaucoup de réponses au hasard)
       fallos: Object.values(s.fallos),
       pendientes: rejouables().length,
     };
@@ -143,9 +144,11 @@ const Deberes = (() => {
 
   // La séance est finie (avant le sobre). Repaso : un point réussi (sans erreur) gagne une réussite ;
   // après 2 réussites lors de Repasos différents, il sort de la liste.
-  function terminer() {
+  // avisos : drapeaux pour le suivi parent (jamais une note).
+  function terminer({ avisos = [] } = {}) {
     if (!S) return;
     S.fin = new Date().toISOString();
+    S.avisos = avisos;
     const L = LECONS[S.leccion];
     if (L && L.repaso) {
       const p = puntos(), fuera = lire("dorian.puntos.fuera", {});
@@ -233,5 +236,19 @@ const Deberes = (() => {
   function reconstruireRepaso() { const R = leconRepaso(); if (R) LECONS[REPASO] = R; else delete LECONS[REPASO]; }
   reconstruireRepaso();
 
-  return { reconstruireRepaso, ICONE, nomEtape, semaine, deuxiemeSeance, matiere, jour, ecart, quand, choisir, leconDuJour, leconRepaso, puntos, rejouables, hechas, commencer, erreur, pause, terminer, recuperer, REPASO };
+  // ---- La révision avant la pause (quand la séance a été finie trop vite) ----
+  // Des exercices autonomes (pas de « Con un mayor », pas de cahier), chacun avec sa leçon d'origine :
+  // d'abord les points ratés (Repaso), puis les autres thèmes de la semaine, puis la leçon du jour.
+  const AUTONOMES = ["toca", "elige", "vrai", "letras", "palitos"];
+  function etapesRevision(actuelle) {
+    const file = [];
+    const ajouter = (id, etapes) => etapes.filter((e) => AUTONOMES.includes(e.type)).forEach((e) => file.push({ ...e, origen: e.origen || id }));
+    if (LECONS[REPASO]) ajouter(REPASO, LECONS[REPASO].etapes);
+    const temas = (Sync.ajustes() || {}).temas || {};
+    Object.keys(LECONS).filter((k) => k !== REPASO && k !== actuelle && temas[k] && temas[k].semana).forEach((k) => ajouter(k, LECONS[k].etapes));
+    if (LECONS[actuelle] && actuelle !== REPASO) ajouter(actuelle, LECONS[actuelle].etapes);
+    return file;
+  }
+
+  return { etapesRevision, reconstruireRepaso, ICONE, nomEtape, semaine, deuxiemeSeance, matiere, jour, ecart, quand, choisir, leconDuJour, leconRepaso, puntos, rejouables, hechas, commencer, erreur, pause, terminer, recuperer, REPASO };
 })();

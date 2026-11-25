@@ -59,6 +59,7 @@
   .sesion .haut{display:flex;justify-content:space-between;gap:10px;font-size:14px;color:var(--encre-douce);font-weight:600}
   .sesion .quoi{font-weight:700;margin:1px 0 4px}
   .sesion.regalo .quoi{color:var(--jaune);margin-bottom:0}
+  .etiquette.aviso{background:#FFE3A3;color:var(--marine)}
   .etiquette{display:inline-block;font-size:12px;font-weight:700;border-radius:6px;padding:1px 7px;margin-left:6px;background:rgba(255,255,255,.14);color:#fff;vertical-align:1px}
   .fallos{display:flex;flex-wrap:wrap;gap:6px}
   .fallos span{font-size:14px;font-weight:600;background:var(--ciel);color:var(--marine);border-radius:8px;padding:2px 8px}
@@ -136,7 +137,10 @@
     </section>
 
     <section class="carte" style="margin-top:14px">
-      <h2>Descanso entre sesiones</h2>
+      <h2>Tiempo de trabajo antes de la pausa</h2>
+      <div class="ligne"><select id="trabajoMin" aria-label="Tiempo de trabajo antes de la pausa"><option value="10">10 minutos</option><option value="15">15 minutos</option><option value="20">20 minutos</option></select></div>
+      <p class="aide">Si termina la sesión antes, abre su sobre y sigue repasando (lo que le costó y los temas de la semana) hasta llegar a este tiempo. Sin reloj a la vista: la pausa llega al final del ejercicio.</p>
+      <h2 style="margin-top:14px">Descanso entre sesiones</h2>
       <div class="ligne"><select id="pausaMin" aria-label="Duración del descanso"><option value="5">5 minutos</option><option value="10">10 minutos</option></select></div>
       <p class="aide">El juego del descanso dura un poco menos (unos 3 min para 5, unos 8 min para 10) y siempre se para solo.</p>
     </section>
@@ -190,9 +194,9 @@
 </main>
 
 <script src="lecons.js?v=11"></script>
-<script src="maths.js?v=14"></script>
-<script src="sync.js?v=4"></script>
-<script src="deberes.js?v=4"></script>
+<script src="maths.js?v=15"></script>
+<script src="sync.js?v=5"></script>
+<script src="deberes.js?v=5"></script>
 <script>
   const $ = (id) => document.getElementById(id);
   const ecrans = ["ecranLien", "ecranCode", "contenu"];
@@ -290,6 +294,7 @@
     $("temas").innerHTML = html;
     const pz = A.pausa || {};
     $("pausaMin").value = pz.minutos === 10 ? "10" : "5";
+    $("trabajoMin").value = [15, 20].includes(pz.trabajo) ? String(pz.trabajo) : "10";
     $("libreBonus").checked = !!pz.libreEnBonus;
     $("repasoDia").innerHTML = [1, 2, 3, 4, 5, 6, 0].map((d) => `<option value="${d}"${d === +(A.repasoDia ?? 5) ? " selected" : ""}>Cada ${DIAS[d]}</option>`).join("");
     afficherHoy();
@@ -297,7 +302,8 @@
 
   $("forzar").addEventListener("change", (ev) => changer({ forzada: ev.target.value ? { lecon: ev.target.value, fecha: hoy() } : null }));
   $("repasoDia").addEventListener("change", (ev) => changer({ repasoDia: +ev.target.value }));
-  const pausaActuelle = () => ({ minutos: +$("pausaMin").value === 10 ? 10 : 5, libreEnBonus: $("libreBonus").checked });
+  const pausaActuelle = () => ({ minutos: +$("pausaMin").value === 10 ? 10 : 5, libreEnBonus: $("libreBonus").checked, trabajo: +$("trabajoMin").value });
+  $("trabajoMin").addEventListener("change", () => changer({ pausa: pausaActuelle() }));
   $("pausaMin").addEventListener("change", () => changer({ pausa: pausaActuelle() }));
   $("libreBonus").addEventListener("change", () => changer({ pausa: pausaActuelle() }));
   $("temas").addEventListener("change", (ev) => {
@@ -329,7 +335,7 @@
         : `<p class="rien">Sin fallos.</p>`;
       return `<div class="sesion">
         <div class="haut"><span>${dateLongue(s.inicio)} · ${heure(s.inicio)}${s.aparato ? " · " + echap(s.aparato) : ""}</span><span>${s.minutos} min · ${s.pausas ? s.pausas + (s.pausas > 1 ? " pausas" : " pausa") : "sin pausas"}</span></div>
-        <p class="quoi">${echap(titre)}${s.terminada ? "" : `<span class="etiquette">sin terminar</span>`}</p>${fallos}</div>`;
+        <p class="quoi">${echap(titre)}${s.terminada ? "" : `<span class="etiquette">sin terminar</span>`}${(s.avisos || []).map((a) => `<span class="etiquette aviso">${{ rapida: "muy rápida", azar: "respuestas al azar" }[a] || echap(a)}</span>`).join("")}</p>${fallos}</div>`;
     }).join("");
     // Ce qui revient le plus : en combien de séances c'est arrivé (pas de note, pas de pourcentage).
     const limite = Deberes.jour(new Date(Date.now() - 14 * 864e5));
