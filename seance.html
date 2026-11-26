@@ -49,7 +49,7 @@
   .mot.bonne{background:var(--vert);color:#fff;box-shadow:0 5px 0 var(--vert-f)}
 
   /* Lettres manquantes */
-  .petit{width:150px;align-self:center}
+  .petit{width:min(150px,22vh);align-self:center;margin-top:auto}
   .cases{display:flex;flex-wrap:wrap;justify-content:center;gap:6px}
   .l{width:40px;height:52px;border-radius:10px;display:grid;place-items:center;font-size:30px;font-weight:800;background:#fff;color:var(--marine)}
   .l.trou{background:transparent;border:3px dashed rgba(255,255,255,.6);color:#fff}
@@ -57,7 +57,7 @@
   .l.trou.rempli{background:var(--jaune);border:0;color:var(--marine);animation:pose .35s var(--ease)}
   .l.espace{width:14px;background:none}
   @keyframes pose{from{transform:scale(1.4)}}
-  .tuiles{display:flex;flex-wrap:wrap;justify-content:center;gap:12px;margin-top:auto}
+  .tuiles{display:flex;flex-wrap:wrap;justify-content:center;gap:12px;margin:clamp(18px,4vh,36px) 0 auto}
   .tuile{width:66px;height:72px;border-radius:14px;background:var(--jaune);color:var(--marine);font-size:34px;font-weight:850;box-shadow:0 5px 0 var(--jaune-f);transition:transform .2s var(--ease),opacity .3s}
   .tuile:active{transform:translateY(3px)}
   .tuile.non{opacity:.45}
