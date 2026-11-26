@@ -22,6 +22,13 @@
   .lecon p{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;font-size:19px;font-weight:700;color:var(--encre-douce)}
   .mini-sobre{width:26px;height:32px;border-radius:4px;flex:none;background:linear-gradient(135deg,var(--rouge) 0 50%,var(--jaune) 50%)}
   .centre .gros{min-height:92px;font-size:34px}
+  /* Les histoires du soir (26 nov. 2026) : discrètes le jour ; à partir de 19 h 30, mises en avant (en premier si les devoirs sont faits). */
+  .noche{display:flex;align-items:center;justify-content:center;min-height:44px;border-radius:22px;font-size:17px;font-weight:700;color:var(--encre-douce);background:rgba(16,23,46,.35);white-space:nowrap;gap:8px}
+  .noche.soir{min-height:64px;border-radius:32px;font-size:23px;font-weight:850;color:#ECE5D3;background:#10172E;box-shadow:0 6px 0 #070B19}
+  .centre:has(.noche){gap:18px}
+  .centre:has(.noche.soir){gap:14px}
+  .centre:has(.noche.soir) .gros{min-height:76px;font-size:30px}
+  .centre:has(.noche.soir) .lecon{padding:14px 16px;gap:10px}
   .animales{display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.1);border-radius:20px;padding:10px 14px}
   .animales b{flex:1;font-size:19px;font-weight:800}
   .animales b small{display:block;font-size:15px;font-weight:600;color:var(--encre-douce)}
@@ -57,6 +64,7 @@
     </section>
     <a class="gros" id="go">¡A los deberes!</a>
     <div id="juegos"></div>
+    <a class="noche" id="noche" href="historias.html">🌙 Historia de esta noche</a>
   </div>
 
   <a class="animales" href="album-animales.html"><b>Mis animales<small id="compte"></small></b><span class="derniers" id="derniers"></span></a>
@@ -76,7 +84,7 @@
 <script src="lecons.js?v=14"></script>
 <script src="maths.js?v=15"></script>
 <script src="animaux.js?v=12"></script>
-<script src="sync.js?v=7"></script>
+<script src="sync.js?v=8"></script>
 <script src="deberes.js?v=6"></script>
 <script>const NE_PAS_VERROUILLER = true;</script>
 <script src="pause-commun.js?v=4"></script>
@@ -102,6 +110,12 @@
     if ($("cerrado")) $("cerrado").addEventListener("click", ouvrirGate);
   }
   afficherJuegos();
+  function afficherNoche() {
+    const d = new Date(), soir = d.getHours() * 60 + d.getMinutes() >= 19 * 60 + 30 || new URLSearchParams(location.search).has("noche");
+    $("noche").classList.toggle("soir", soir);
+    if (soir && juegosAbiertos()) $("go").before($("noche")); // devoirs faits : l'histoire d'abord
+  }
+  afficherNoche();
   let attendu;
   function nouveauCalcul() {
     const a = 6 + Math.floor(Math.random() * 4), b = 6 + Math.floor(Math.random() * 4), c = 11 + Math.floor(Math.random() * 30);

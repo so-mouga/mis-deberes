@@ -101,9 +101,9 @@ const Sync = (() => {
   // Les cromos, les leçons faites et les points à revoir vivent en localStorage ET dans le Sheet.
   // On fusionne par union : un animal gagné n'est jamais perdu, même s'il a été gagné hors ligne sur un autre téléphone.
   // On envoie tout l'état à chaque fois : si un envoi échoue, le suivant rattrape (pas besoin de file d'attente).
-  const CLES_PROGRESO = { animales: "dorian.animales", hechas: "dorian.hechas", puntos: "dorian.puntos", fuera: "dorian.puntos.fuera", tickets: "dorian.tickets", aparatos: "dorian.aparatos" };
+  const CLES_PROGRESO = { animales: "dorian.animales", hechas: "dorian.hechas", puntos: "dorian.puntos", fuera: "dorian.puntos.fuera", tickets: "dorian.tickets", aparatos: "dorian.aparatos", historias: "dorian.historias" };
   const progresoLocal = () => ({ animales: lire(CLES_PROGRESO.animales, []), hechas: lire(CLES_PROGRESO.hechas, {}), puntos: lire(CLES_PROGRESO.puntos, {}),
-    fuera: lire(CLES_PROGRESO.fuera, {}), tickets: lire(CLES_PROGRESO.tickets, { ganados: {}, gastados: {} }), aparatos: lire(CLES_PROGRESO.aparatos, {}) });
+    fuera: lire(CLES_PROGRESO.fuera, {}), tickets: lire(CLES_PROGRESO.tickets, { ganados: {}, gastados: {} }), aparatos: lire(CLES_PROGRESO.aparatos, {}), historias: lire(CLES_PROGRESO.historias, {}) });
   const ecrireProgreso = (p) => Object.entries(CLES_PROGRESO).forEach(([k, cle]) => ecrire(cle, p[k]));
 
   // Même fonction que fusionnerProgreso dans outils/deberes.gs : à garder identiques.
@@ -139,7 +139,19 @@ const Sync = (() => {
       const x = aparatos[k] || {}, y = b.aparatos[k];
       aparatos[k] = { desde: x.desde && (!y.desde || x.desde < y.desde) ? x.desde : y.desde, visto: max(x.visto, y.visto) };
     });
-    return { animales, hechas, puntos, fuera, tickets, aparatos };
+    // Les histoires du soir (même fonction que fusionnerHistorias dans historias.js) : le premier choix gagne
+    // (compagnon, chemins : pas de retour en arrière), un chapitre lu le reste (date la plus ancienne), enCurso : le plus récent.
+    const ha = a.historias || {}, hb = b.historias || {};
+    const premier = (x, y) => (!x ? y : !y ? x : (x.fecha || "") <= (y.fecha || "") ? x : y);
+    const dernier = (x, y) => (!x ? y : !y ? x : (x.fecha || "") >= (y.fecha || "") ? x : y);
+    const elecciones = Object.assign({}, ha.elecciones);
+    Object.keys(hb.elecciones || {}).forEach((k) => { elecciones[k] = premier(elecciones[k], hb.elecciones[k]); });
+    const leidos = Object.assign({}, ha.leidos);
+    Object.keys(hb.leidos || {}).forEach((k) => { leidos[k] = !leidos[k] ? hb.leidos[k] : !hb.leidos[k] ? leidos[k] : leidos[k] <= hb.leidos[k] ? leidos[k] : hb.leidos[k]; });
+    const historias = { elecciones, leidos };
+    const comp = premier(ha.companero, hb.companero); if (comp) historias.companero = comp;
+    const cours = dernier(ha.enCurso, hb.enCurso); if (cours) historias.enCurso = cours;
+    return { animales, hechas, puntos, fuera, tickets, aparatos, historias };
   }
 
   // Envoie la progression du téléphone, reçoit celle fusionnée de tous les téléphones. Renvoie true si elle a été reçue.

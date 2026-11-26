@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#10172E">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icone-192.png">
+<title>Historia de esta noche</title>
+<link rel="preload" href="assets/fonts/lexend-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="style.css?v=10">
+<style>
+  /* Le mode nuit (brief des histoires du soir) : fond sombre et doux, couleurs calmes, aucun son, aucune animation vive. */
+  :root{--noche:#10172E;--noche-2:#19223F;--noche-3:#243056;--texto:#ECE5D3;--suave:#A3ABC6;--oro:#E3BE72;--oro-f:#A8873F;--lila:#B7A6E3;--lila-f:#5E5390}
+  html,body{height:100%;overflow:hidden;overscroll-behavior:none}
+  body{background:var(--noche);background-image:none;color:var(--texto)}
+  .ecran{height:100dvh;min-height:0;overflow:hidden;gap:12px;padding-top:max(12px,env(safe-area-inset-top))}
+  button:focus-visible,a:focus-visible{outline-color:var(--oro)}
+
+  .barre{display:flex;align-items:center;gap:12px;min-height:48px}
+  .barre .rond{width:48px;height:48px;background:var(--noche-2);box-shadow:none;color:var(--suave)}
+  .barre .rond svg{width:24px;height:24px}
+  .puntos{flex:1;display:flex;gap:6px;align-items:center}
+  .puntos i{flex:1;height:6px;border-radius:3px;background:var(--noche-3)}
+  .puntos i.hecho{background:var(--suave)}
+  .puntos i.aqui{background:var(--oro)}
+
+  .vue{flex:1;min-height:0;display:flex;flex-direction:column;gap:16px;overflow-y:auto;overscroll-behavior:contain}
+  .pied{display:flex;gap:12px;align-items:center}
+  .pied .rond{width:64px;height:64px;background:var(--noche-2);box-shadow:none;color:var(--suave)}
+
+  .boton{flex:1;display:flex;align-items:center;justify-content:center;gap:10px;min-height:68px;border-radius:34px;font-weight:800;font-size:26px;
+    background:var(--oro);color:#1A1F33;box-shadow:0 5px 0 var(--oro-f)}
+  .boton:active{transform:translateY(3px);box-shadow:0 2px 0 var(--oro-f)}
+  .boton[disabled]{background:var(--noche-3);color:var(--suave);box-shadow:none}
+  .boton{text-align:center;line-height:1.15;padding:0 16px}
+  .boton.calme{background:var(--noche-2);color:var(--texto);box-shadow:none;font-size:22px}
+  .boton svg{width:26px;height:26px}
+
+  /* Le tour de lecture */
+  .turno{align-self:flex-start;display:flex;align-items:center;gap:8px;font-weight:800;font-size:20px;padding:7px 16px 8px;border-radius:999px}
+  .turno.D{background:var(--oro);color:#1A1F33}
+  .turno.M{background:var(--lila);color:#1A1F33}
+  .turno svg{width:22px;height:22px}
+  .parrafo{font-size:26px;line-height:1.65;font-weight:400;letter-spacing:.005em;padding-left:14px;border-left:4px solid var(--oro)}
+  .parrafo.M{border-left-color:var(--lila)}
+
+  /* Les mots qu'on peut toucher */
+  .m{border-radius:6px;cursor:pointer}
+  .m.touche{background:var(--noche-3)}
+  .bulle{position:fixed;z-index:20;left:16px;right:16px;display:flex;justify-content:center;pointer-events:none}
+  .bulle span{background:#2E3963;color:#F3EBD8;border:2px solid var(--oro);border-radius:16px;padding:8px 18px 10px;font-size:36px;font-weight:700;box-shadow:0 6px 18px rgba(0,0,0,.6)}
+  .bulle i{font-style:normal;color:var(--suave);font-weight:400;padding:0 4px}
+
+  h2.titre{font-size:26px;font-weight:800;line-height:1.25}
+  .petit{font-size:17px;color:var(--suave);line-height:1.4}
+
+  /* La couverture et le carnet d'aventuras */
+  .portada{align-items:center;text-align:center;justify-content:center}
+  .portada .lune{width:72px;height:72px;color:var(--oro)}
+  .portada h1{font-size:30px;font-weight:850;line-height:1.15;letter-spacing:-.01em}
+  .portada h1 small{display:block;font-size:20px;font-weight:600;color:var(--suave);margin-top:4px}
+  .carnet{width:100%;display:flex;flex-direction:column;gap:6px;background:var(--noche-2);border-radius:18px;padding:12px 14px;text-align:left}
+  .carnet b{font-size:15px;color:var(--suave);font-weight:700;text-transform:uppercase;letter-spacing:.06em}
+  .carnet p{display:flex;align-items:center;gap:10px;font-size:18px}
+  .carnet p span{flex:1}
+  .carnet p svg{width:22px;height:22px;flex:none;color:var(--oro)}
+  .carnet p.pas{color:var(--suave)}
+  .carnet p.pas svg{color:var(--noche-3)}
+  .compa{display:flex;align-items:center;gap:12px;font-size:18px}
+  .compa img{width:56px;height:56px;border-radius:14px;object-fit:cover;filter:brightness(.9);background:var(--noche-3)}
+  .reglage{font-size:16px;color:var(--suave);text-decoration:underline;text-underline-offset:4px;padding:8px}
+
+  /* Las palabras mágicas */
+  .magicas{display:flex;flex-direction:column;gap:12px}
+  .magica{display:flex;justify-content:center;align-items:baseline;min-height:62px;border-radius:20px;background:var(--noche-2);font-size:34px;font-weight:700;padding:6px 10px}
+  .magica i{font-style:normal;color:var(--suave);font-weight:400;padding:0 6px}
+  .magica u{text-decoration:none;color:var(--oro)}
+  .magica.lue{outline:3px solid var(--noche-3)}
+
+  /* Le compagnon */
+  .grille{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding-bottom:6px}
+  .ani{display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px;border-radius:16px;background:var(--noche-2)}
+  .ani img{width:100%;aspect-ratio:1;border-radius:12px;object-fit:cover;filter:brightness(.9);background:var(--noche-3)}
+  .ani span{font-size:15px;font-weight:700;line-height:1.15;text-align:center;min-height:2.3em;display:grid;place-items:center}
+  .voile{position:fixed;inset:0;z-index:10;background:rgba(8,12,26,.94);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:24px;text-align:center}
+  .voile img{width:180px;height:180px;border-radius:28px;object-fit:cover;filter:brightness(.9)}
+  .voile p{font-size:24px;line-height:1.4;max-width:16em}
+  .voile .boton{flex:none;width:100%;max-width:320px}
+
+  /* Le choix */
+  .opciones{display:flex;flex-direction:column;gap:14px}
+  .opcion{text-align:left;font-size:25px;line-height:1.5;padding:16px 18px;border-radius:20px;background:var(--noche-2);border:3px solid transparent}
+  .opcion.elegida{border-color:var(--oro);background:var(--noche-3)}
+
+  /* La porte magique */
+  .puerta{display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center}
+  .puerta svg.porte{width:120px;height:132px}
+  .puerta .dit{font-size:22px;line-height:1.4;min-height:4.2em;display:grid;place-items:center}
+  .puerta .frase{font-size:28px;font-weight:700}
+  .puerta .mots{display:flex;gap:14px;width:100%}
+  .puerta .mots button{flex:1;min-height:80px;border-radius:22px;background:var(--noche-2);font-size:32px;font-weight:700;border:3px solid var(--noche-3)}
+  .puerta .mots button.non{opacity:.25}
+  .puerta .mots button.oui{border-color:var(--oro);color:var(--oro)}
+
+  /* Buenas noches */
+  .noches{align-items:center;justify-content:center;text-align:center;gap:20px}
+  .noches .lune{width:90px;height:90px;color:var(--oro)}
+  .noches h2{font-size:34px;font-weight:800;line-height:1.2}
+</style>
+</head>
+<body>
+<main class="ecran">
+  <header class="barre">
+    <a class="rond" id="salir" href="index.html" aria-label="Salir"></a>
+    <div class="puntos" id="puntos"></div>
+  </header>
+  <section class="vue" id="vue"></section>
+  <footer class="pied" id="pied"></footer>
+</main>
+<div class="bulle" id="bulle" hidden></div>
+
+<script src="commun.js?v=11"></script>
+<script src="animaux.js?v=12"></script>
+<script src="sync.js?v=8"></script>
+<script src="historias.js?v=2"></script>
+<script>
+  // Test : ?prueba (pas d'attente au lendemain), ?capitulo=N (ouvre ce chapitre), ?reiniciar (efface la progression de ce téléphone).
+  const Q = new URLSearchParams(location.search);
+  const PRUEBA = Q.has("prueba") || Q.has("capitulo");
+  if (Q.has("reiniciar")) { localStorage.removeItem(Historias.CLE); history.replaceState(null, "", location.pathname + (PRUEBA ? "?prueba" : "")); }
+  const $ = (id) => document.getElementById(id);
+  const vue = $("vue"), pied = $("pied");
+  $("salir").innerHTML = ICONES.croix;
+  const LUNE = `<svg class="lune" viewBox="0 0 24 24" fill="currentColor"><path d="M19 14.5A7.5 7.5 0 1 1 9.5 5a6 6 0 0 0 9.5 9.5z"/></svg>`;
+  const CHECK = ICONES.ok, ROND = `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5" fill="currentColor"/></svg>`;
+  const FLECHE = `<svg viewBox="0 0 24 24" ${T}><path d="M5 12h14M13 6l6 6-6 6"/></svg>`;
+  const RETOUR = `<svg viewBox="0 0 24 24" ${T}><path d="M19 12H5M11 6l-6 6 6 6"/></svg>`;
+  const LIVRE = `<svg viewBox="0 0 24 24" ${T}><path d="M4 5.5C6.5 4.5 9.5 4.5 12 6c2.5-1.5 5.5-1.5 8-.5v13c-2.5-1-5.5-1-8 .5-2.5-1.5-5.5-1.5-8-.5z"/><path d="M12 6v13"/></svg>`;
+  const nomAnimal = (a) => a.es.replace(/^(el|la) /, "");
+  const imgAnimal = (a) => `animaux/${String(a.n).padStart(2, "0")}.png`;
+
+  // « Leo solo » : les paragraphes de maman sont lus par la voix (ceux de Dorian, jamais). Réglage des parents (Sheet) ou de ce téléphone.
+  const CLE_SOLO = "dorian.historias.leoSolo";
+  const leoSolo = () => { const a = (Sync.ajustes() || {}).historias; if (a && typeof a.leoSolo === "boolean") return a.leoSolo; try { return localStorage.getItem(CLE_SOLO) === "1"; } catch { return false; } };
+
+  // ---- Les mots qu'on touche : découpés en syllabes, dits lentement. C'est tout. ----
+  const LETTRE = /[A-Za-zÁÉÍÓÚáéíóúÑñÜü]+/;
+  function motsTouchables(texte) {
+    return texte.split(/(\s+)/).map((morceau) => {
+      const m = morceau.match(LETTRE);
+      if (!m) return morceau.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+      return `<span class="m" data-w="${m[0]}">${morceau}</span>`;
+    }).join("");
+  }
+  let bulleTimer, motTouche;
+  function aider(el) {
+    const w = el.dataset.w;
+    motTouche?.classList.remove("touche");
+    motTouche = el; el.classList.add("touche");
+    const b = $("bulle");
+    b.innerHTML = `<span>${silabas(w).join("<i>-</i>")}</span>`;
+    const r = el.getBoundingClientRect();
+    b.hidden = false;
+    const h = b.offsetHeight;
+    b.style.top = (r.top - h - 10 > 8 ? r.top - h - 10 : r.bottom + 10) + "px";
+    clearTimeout(bulleTimer);
+    dire(w.toLowerCase(), "es-ES", 0.6).then(() => { bulleTimer = setTimeout(fermerBulle, 1500); });
+  }
+  function fermerBulle() { $("bulle").hidden = true; motTouche?.classList.remove("touche"); motTouche = null; }
+  vue.addEventListener("scroll", fermerBulle, { passive: true });
+
+  // ---- L'état du chapitre ----
+  let E = Historias.lire(), CAP = null, I = -1, PILE = [];
+  const pasos = () => CAP.pasos;
+  const suivant = (i) => { for (let k = i + 1; k < pasos().length; k++) if (pasoActivo(pasos()[k], E)) return k; return -1; };
+  function points() {
+    // La barre du haut : magicas + chaque paso de la branche (les branches non choisies ont la même longueur).
+    const actifs = [];
+    // Sur les branches pas encore choisies, on compte un seul paso par groupe « si ».
+    const groupe = (p) => p.si ? Object.keys(p.si)[0] : null;
+    pasos().forEach((p, idx) => {
+      const g = groupe(p);
+      if (!g) { actifs.push(idx); return; }
+      if (E.elecciones[g]) { if (pasoActivo(p, E)) actifs.push(idx); return; }
+      const deja = actifs.some((j) => groupe(pasos()[j]) === g);
+      if (!deja) actifs.push(idx);
+    });
+    const pos = I < 0 ? 0 : actifs.findIndex((j) => j === I) + 1;
+    $("puntos").innerHTML = Array.from({ length: actifs.length + 1 }, (_, n) => `<i class="${n < pos ? "hecho" : n === pos ? "aqui" : ""}"></i>`).join("");
+  }
+  // Un double appui sur « Siguiente » ne doit pas sauter un paragraphe (ni l'écran Buenas noches) : le pied attend un peu.
+  let pretA = 0;
+  function boutonsPied(html, attente = 900) { pied.innerHTML = html; pretA = Date.now() + attente; }
+  pied.addEventListener("click", (ev) => { if (Date.now() < pretA) { ev.preventDefault(); ev.stopImmediatePropagation(); } }, true);
+
+  // ---- La couverture : le chapitre de ce soir, le carnet d'aventuras ----
+  function portada() {
+    CAP = null; fermerBulle();
+    $("puntos").innerHTML = "";
+    const S = Historias.chapitreDuSoir(E, PRUEBA);
+    const a = E.companero && ANIMAUX.find((x) => x.n === E.companero.n);
+    const carnet = HISTORIAS.capitulos.map((c) => `<p class="${E.leidos[c.n] ? "" : "pas"}">${E.leidos[c.n] ? CHECK : ROND}<span>${c.n}. ${E.leidos[c.n] ? c.titulo : "…"}</span></p>`).join("");
+    vue.className = "vue portada";
+    vue.innerHTML = `${LUNE}<h1>Las aventuras de Dorian<small>en el Mundo de Bloques</small></h1>
+      ${a ? `<div class="compa"><img src="${imgAnimal(a)}" alt="" onerror="this.remove()"><span>Con ${a.es}</span></div>` : ""}
+      <div class="carnet"><b>Mi carnet de aventuras</b>${carnet}</div>
+      <button class="reglage" id="solo">${leoSolo() ? "Leo solo: sí (la voz lee lo de mamá)" : "Leo con mamá"}</button>`;
+    $("solo").onclick = () => { try { localStorage.setItem(CLE_SOLO, leoSolo() ? "0" : "1"); } catch {} portada(); };
+    if (S.cap) {
+      const reprise = E.enCurso && E.enCurso.cap === S.cap.n && E.enCurso.paso >= 0;
+      boutonsPied(`<button class="boton" id="go">${LIVRE}${reprise ? "Seguir" : "Capítulo " + S.cap.n}</button>`);
+      $("go").onclick = () => ouvrir(S.cap, reprise ? E.enCurso.paso : null);
+    } else if (S.attendre) {
+      vue.insertAdjacentHTML("beforeend", `<p class="petit">El capítulo ${S.attendre.n} estará listo mañana.</p>`);
+      boutonsPied(`<a class="boton calme" href="index.html">Buenas noches, Dorian 🌙</a>`);
+    } else {
+      vue.insertAdjacentHTML("beforeend", `<p class="petit">Pronto, más capítulos.</p>`);
+      boutonsPied(`<a class="boton calme" href="index.html">Buenas noches, Dorian 🌙</a>`);
+    }
+  }
+
+  function ouvrir(cap, reprise) {
+    CAP = cap; PILE = [];
+    if (reprise != null && pasos()[reprise]) { I = reprise; afficher(); }
+    else magicas();
+  }
+
+  // ---- 1. Las palabras mágicas ----
+  function magicas() {
+    I = -1; points();
+    vue.className = "vue";
+    vue.innerHTML = `<h2 class="titre">Capítulo ${CAP.n}<br>${CAP.titulo}</h2>
+      <p class="petit">Las palabras mágicas de esta noche. Léelas una vez. Si tocas una, te la digo despacio.</p>
+      <div class="magicas">${CAP.magicas.map((m, k) => `<button class="magica" data-k="${k}">${m.s.map((s) => genreSilaba(s) ? `<u>${s}</u>` : s).join("<i>-</i>")}</button>`).join("")}</div>`;
+    vue.querySelectorAll(".magica").forEach((b) => b.onclick = () => { b.classList.add("lue"); dire(CAP.magicas[b.dataset.k].p, "es-ES", 0.55); });
+    boutonsPied(`<button class="boton" id="go">¡Ya las sé!${FLECHE}</button>`);
+    $("go").onclick = () => avancer();
+  }
+
+  // ---- Avancer / reculer ----
+  function avancer() {
+    speechSynthesis?.cancel?.();
+    const k = suivant(I);
+    if (k < 0) return finChapitre();
+    if (I >= 0 && pasos()[I].t) PILE.push(I); else if (I === -1) PILE.push(-1);
+    I = k; afficher();
+  }
+  function reculer() {
+    speechSynthesis?.cancel?.();
+    if (!PILE.length) return;
+    I = PILE.pop();
+    if (I === -1) magicas(); else afficher();
+  }
+  function afficher() {
+    fermerBulle(); points();
+    Historias.position(CAP.n, I); E = Historias.lire();
+    vue.scrollTop = 0;
+    const p = pasos()[I];
+    if (p.t) return parrafo(p);
+    PILE = []; // un choix ne se défait pas : on ne revient pas en arrière par-dessus
+    if (p.tipo === "companero") return E.companero ? avancer() : companero(p);
+    if (p.tipo === "eleccion") return E.elecciones[p.id] ? avancer() : eleccion(p);
+    if (p.tipo === "puerta") return puerta(p);
+  }
+
+  // ---- 2. Un paragraphe, avec son tour ----
+  function parrafo(p) {
+    const solo = leoSolo() && p.t === "M";
+    const txt = texteDuPaso(p, E);
+    vue.className = "vue";
+    vue.innerHTML = `<span class="turno ${p.t}">${p.t === "D" ? "Turno de Dorian" : solo ? ICONES.hautparleur + "Escucha" : "Turno de mamá"}</span>
+      <p class="parrafo ${p.t}">${motsTouchables(txt)}</p>`;
+    vue.querySelectorAll(".m").forEach((el) => el.onclick = (ev) => { ev.stopPropagation(); aider(el); });
+    boutonsPied(`${PILE.length ? `<button class="rond" id="atras" aria-label="Atrás">${RETOUR}</button>` : ""}
+      ${solo ? `<button class="rond" id="oir" aria-label="Escuchar otra vez">${ICONES.hautparleur}</button>` : ""}
+      <button class="boton" id="go">Siguiente${FLECHE}</button>`);
+    if ($("atras")) $("atras").onclick = reculer;
+    $("go").onclick = avancer;
+    if (solo) { const lire = () => dire(txt, "es-ES", 0.85); $("oir").onclick = lire; setTimeout(lire, 400); }
+  }
+
+  // ---- 3. Le compagnon (pour toute la saison) ----
+  function companero(p) {
+    vue.className = "vue";
+    vue.innerHTML = `<h2 class="titre">${motsTouchables(p.pregunta)}</h2>
+      <p class="petit">Elige a tu compañero de aventuras. ¡Será para siempre!</p>
+      <div class="grille">${ANIMAUX.map((a) => `<button class="ani" data-n="${a.n}"><img src="${imgAnimal(a)}" alt="" onerror="this.style.visibility='hidden'"><span>${nomAnimal(a)}</span></button>`).join("")}</div>`;
+    vue.querySelectorAll("h2 .m").forEach((el) => el.onclick = () => aider(el));
+    boutonsPied("");
+    vue.querySelectorAll(".ani").forEach((b) => b.onclick = () => confirmerCompagnon(ANIMAUX.find((a) => a.n === +b.dataset.n)));
+  }
+  function confirmerCompagnon(a) {
+    const v = document.createElement("div");
+    v.className = "voile";
+    const un = remplir("{un}", { companero: { n: a.n }, elecciones: {} });
+    v.innerHTML = `<img src="${imgAnimal(a)}" alt="" onerror="this.remove()"><p>¿${un[0].toUpperCase() + un.slice(1)}? Será tu ${/^la /.test(a.es) ? "compañera" : "compañero"} para siempre.</p>
+      <button class="boton" id="si">¡Sí, este!</button><button class="boton calme" id="otro">Mirar otros</button>`;
+    document.body.append(v);
+    v.querySelector("#otro").onclick = () => v.remove();
+    v.querySelector("#si").onclick = () => { v.remove(); E = Historias.choisirCompagnon(a.n); avancer(); };
+  }
+
+  // ---- 4. Le choix : il lit les options pour choisir ----
+  function eleccion(p) {
+    let choix = null;
+    vue.className = "vue";
+    vue.innerHTML = `<h2 class="titre">${motsTouchables(p.pregunta)}</h2>
+      <div class="opciones">${p.opciones.map((o) => `<button class="opcion" data-v="${o.v}">${motsTouchables(remplir(o.txt, E))}</button>`).join("")}</div>`;
+    const marquer = (b) => { choix = b.dataset.v; vue.querySelectorAll(".opcion").forEach((x) => x.classList.toggle("elegida", x === b)); $("go").disabled = false; };
+    vue.querySelectorAll(".opcion").forEach((b) => b.onclick = () => marquer(b));
+    vue.querySelectorAll(".m").forEach((el) => el.onclick = (ev) => { ev.stopPropagation(); aider(el); const b = el.closest(".opcion"); if (b) marquer(b); });
+    boutonsPied(`<button class="boton" id="go" disabled>¡Elijo esta!${FLECHE}</button>`);
+    $("go").onclick = () => { if (!choix) return; E = Historias.choisir(p.id, choix); avancer(); };
+  }
+
+  // ---- 5. La porte magique : le bon mot dans une paire piège. Se tromper la fait rire, c'est tout. ----
+  const PORTE = `<svg class="porte" viewBox="0 0 100 110"><rect x="8" y="6" width="84" height="100" rx="6" fill="#5B5F78" stroke="#2A2E45" stroke-width="3"/>
+    <path d="M8 31h84M8 56h84M8 81h84M36 6v25M64 31v25M36 56v25M64 81v25" stroke="#4A4E66" stroke-width="3"/>
+    <rect x="27" y="36" width="12" height="12" rx="2" fill="#ECE5D3"/><rect x="61" y="36" width="12" height="12" rx="2" fill="#ECE5D3"/>
+    <rect x="31" y="40" width="5" height="6" fill="#10172E"/><rect x="65" y="40" width="5" height="6" fill="#10172E"/>
+    <path id="bouche" d="M34 66q16 12 32 0" fill="none" stroke="#ECE5D3" stroke-width="4" stroke-linecap="round"/></svg>`;
+  const COFRE = `<svg class="porte" viewBox="0 0 100 110"><rect x="8" y="22" width="84" height="34" rx="8" fill="#8A6A45" stroke="#3E2E1E" stroke-width="3"/>
+    <rect x="8" y="52" width="84" height="50" rx="4" fill="#9C7A50" stroke="#3E2E1E" stroke-width="3"/><path d="M30 22v80M70 22v80" stroke="#C9A35C" stroke-width="5"/>
+    <rect x="27" y="62" width="12" height="12" rx="2" fill="#ECE5D3"/><rect x="61" y="62" width="12" height="12" rx="2" fill="#ECE5D3"/>
+    <rect x="31" y="66" width="5" height="6" fill="#10172E"/><rect x="65" y="66" width="5" height="6" fill="#10172E"/>
+    <path id="bouche" d="M34 86q16 10 32 0" fill="none" stroke="#ECE5D3" stroke-width="4" stroke-linecap="round"/></svg>`;
+  function puerta(p) {
+    let r = 0;
+    const dessin = /cofre/.test(p.nombre) ? COFRE : PORTE;
+    const rire = /cofre/.test(p.nombre) ? "M34 84h32q-2 14-16 14t-16-14z" : "M34 63h32q-2 15-16 15t-16-15z";
+    const Nom = p.nombre[0].toUpperCase() + p.nombre.slice(1);
+    function ronde() {
+      const R = p.rondas[r];
+      const mots = Math.random() < .5 ? [R.buena, R.trampa] : [R.trampa, R.buena];
+      vue.className = "vue";
+      vue.innerHTML = `<div class="puerta">${dessin}
+        <p class="dit">${Nom} dice: «${p.pregunta}»</p>
+        <p class="frase">${R.frase}</p>
+        <div class="mots">${mots.map((m) => `<button data-m="${m}">${m}</button>`).join("")}</div></div>`;
+      boutonsPied("");
+      vue.querySelectorAll(".mots button").forEach((b) => b.onclick = () => {
+        if (b.classList.contains("non") || b.classList.contains("oui")) return;
+        if (b.dataset.m === R.trampa) {
+          b.classList.add("non");
+          vue.querySelector("#bouche").setAttribute("d", rire); // elle rit, bouche ouverte
+          vue.querySelector("#bouche").setAttribute("fill", "#10172E");
+          vue.querySelector(".dit").textContent = `¡Ja, ja, ja! ¡Me haces cosquillas! «${R.trampa}» no existe. Prueba otra vez.`;
+          return;
+        }
+        b.classList.add("oui");
+        vue.querySelectorAll(".mots button").forEach((x) => { if (x !== b) x.classList.add("non"); });
+        vue.querySelector(".dit").textContent = r < p.rondas.length - 1 ? "¡Muy bien! Otra más…" : `¡Muy bien! ${Nom} se abre…`;
+        boutonsPied(`<button class="boton" id="go">Siguiente${FLECHE}</button>`);
+        $("go").onclick = () => { r++; if (r < p.rondas.length) ronde(); else avancer(); };
+      });
+    }
+    ronde();
+  }
+
+  // ---- 6. La fin : le carnet, puis Buenas noches ----
+  function finChapitre() {
+    E = Historias.terminer(CAP.n);
+    fermerBulle();
+    $("puntos").querySelectorAll("i").forEach((i) => { i.className = "hecho"; });
+    const suite = HISTORIAS.capitulos.find((c) => !E.leidos[c.n]);
+    vue.className = "vue noches";
+    vue.innerHTML = `${LUNE}<h2>Buenas noches, Dorian 🌙</h2>
+      <p class="petit">El capítulo ${CAP.n} ya está en tu carnet de aventuras.${suite ? `<br>Mañana, el capítulo ${suite.n}.` : ""}</p>`;
+    boutonsPied(`<a class="boton calme" href="index.html">Cerrar</a>`, 2500);
+    CAP = null;
+  }
+
+  document.addEventListener("click", (ev) => { if (!ev.target.closest(".m")) fermerBulle(); });
+
+  // Un test peut ouvrir un chapitre précis : ?capitulo=2
+  const demande = HISTORIAS.capitulos.find((c) => c.n === +Q.get("capitulo"));
+  if (demande) ouvrir(demande, null); else portada();
+
+  // La progression arrive des autres téléphones (chez la grand-mère) dès que la page parent sait la fusionner.
+  Sync.synchroniserProgreso().then((ok) => { if (ok && !CAP) { E = Historias.lire(); portada(); } });
+</script>
+</body>
+</html>
