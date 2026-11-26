@@ -870,5 +870,6 @@ select,input[type=date],input[type=text]{min-height:44px;border-radius:10px;bord
   else if (sessionStorage.getItem(OUVERT)) ouvrir();
   else demanderCode();
 </script>
+<script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});</script>
 </body>
 </html>

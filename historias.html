@@ -391,5 +391,6 @@
   // La progression arrive des autres téléphones (chez la grand-mère) dès que la page parent sait la fusionner.
   Sync.synchroniserProgreso().then((ok) => { if (ok && !CAP) { E = Historias.lire(); portada(); } });
 </script>
+<script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});</script>
 </body>
 </html>
