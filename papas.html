@@ -167,6 +167,8 @@
     </section>
 
     <section class="carte" style="margin-top:14px">
+      <h2>Móviles de Dorian</h2>
+      <ul class="cuesta" id="aparatos" style="margin-bottom:12px"></ul>
       <h2>Añadir un móvil para Dorian</h2>
       <div class="appareil">
         <p class="aide" style="margin-top:0">Para el móvil de la abuela u otro: escribe su nombre y abre el enlace en ese móvil, o escanea el código con su cámara. No hay que escribir nada más.</p>
@@ -197,7 +199,7 @@
 
 <script src="lecons.js?v=11"></script>
 <script src="maths.js?v=15"></script>
-<script src="sync.js?v=6"></script>
+<script src="sync.js?v=7"></script>
 <script src="deberes.js?v=5"></script>
 <script>
   const $ = (id) => document.getElementById(id);
@@ -368,6 +370,7 @@
       A = { ...a, ...lireLocal(PENDIENTE, {}) };
       S = s || [];
       P = p;
+      afficherAparatos();
       envoyerRegalos();
       afficherReglages(); afficherSesiones();
       if (lireLocal(PENDIENTE, null)) envoyer();
@@ -459,6 +462,15 @@
   });
 
   // ---------- Les parties de jeu ----------
+  // Les téléphones branchés pour Dorian (chacun se signale à chaque ouverture de l'appli).
+  function afficherAparatos() {
+    const ap = Object.entries((P && P.aparatos) || {}).sort((x, y) => String(y[1].visto).localeCompare(String(x[1].visto)));
+    const vu = (iso) => { const j = Deberes.jour(new Date(iso)), n = Deberes.ecart(j, Deberes.jour()); return n === 0 ? "hoy " + heure(iso) : n === 1 ? "ayer" : dateLongue(iso); };
+    $("aparatos").innerHTML = ap.length
+      ? ap.map(([nom, a]) => `<li><span>${echap(nom)}</span><small>visto ${vu(a.visto)}</small></li>`).join("")
+      : `<li class="rien">Ningún móvil todavía. Se ve aquí en cuanto abre la app.</li>`;
+  }
+
   function afficherPartidas() {
     const t = (P && P.tickets) || { ganados: {}, gastados: {} };
     const enAttente = Object.keys(lireLocal(REGALOS, {})).filter((k) => !t.ganados[k]).length;

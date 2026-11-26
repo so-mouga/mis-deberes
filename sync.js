@@ -101,9 +101,9 @@ const Sync = (() => {
   // Les cromos, les leçons faites et les points à revoir vivent en localStorage ET dans le Sheet.
   // On fusionne par union : un animal gagné n'est jamais perdu, même s'il a été gagné hors ligne sur un autre téléphone.
   // On envoie tout l'état à chaque fois : si un envoi échoue, le suivant rattrape (pas besoin de file d'attente).
-  const CLES_PROGRESO = { animales: "dorian.animales", hechas: "dorian.hechas", puntos: "dorian.puntos", fuera: "dorian.puntos.fuera", tickets: "dorian.tickets" };
+  const CLES_PROGRESO = { animales: "dorian.animales", hechas: "dorian.hechas", puntos: "dorian.puntos", fuera: "dorian.puntos.fuera", tickets: "dorian.tickets", aparatos: "dorian.aparatos" };
   const progresoLocal = () => ({ animales: lire(CLES_PROGRESO.animales, []), hechas: lire(CLES_PROGRESO.hechas, {}), puntos: lire(CLES_PROGRESO.puntos, {}),
-    fuera: lire(CLES_PROGRESO.fuera, {}), tickets: lire(CLES_PROGRESO.tickets, { ganados: {}, gastados: {} }) });
+    fuera: lire(CLES_PROGRESO.fuera, {}), tickets: lire(CLES_PROGRESO.tickets, { ganados: {}, gastados: {} }), aparatos: lire(CLES_PROGRESO.aparatos, {}) });
   const ecrireProgreso = (p) => Object.entries(CLES_PROGRESO).forEach(([k, cle]) => ecrire(cle, p[k]));
 
   // Même fonction que fusionnerProgreso dans outils/deberes.gs : à garder identiques.
@@ -133,7 +133,13 @@ const Sync = (() => {
     // Les tickets de jeu : deux listes d'événements (gagnés / joués), chacun avec un id unique. L'union est sûre.
     const ta = a.tickets || {}, tb = b.tickets || {};
     const tickets = { ganados: Object.assign({}, ta.ganados, tb.ganados), gastados: Object.assign({}, ta.gastados, tb.gastados) };
-    return { animales, hechas, puntos, fuera, tickets };
+    // Les téléphones de Dorian : { nom: { desde, visto } } (branché depuis, vu pour la dernière fois).
+    const aparatos = Object.assign({}, a.aparatos);
+    Object.keys(b.aparatos || {}).forEach((k) => {
+      const x = aparatos[k] || {}, y = b.aparatos[k];
+      aparatos[k] = { desde: x.desde && (!y.desde || x.desde < y.desde) ? x.desde : y.desde, visto: max(x.visto, y.visto) };
+    });
+    return { animales, hechas, puntos, fuera, tickets, aparatos };
   }
 
   // Envoie la progression du téléphone, reçoit celle fusionnée de tous les téléphones. Renvoie true si elle a été reçue.
@@ -141,6 +147,11 @@ const Sync = (() => {
     const l = lien();
     if (!l) return false;
     try {
+      // Ce téléphone se signale (pour la liste « Móviles de Dorian » de la page parent) : son nom et « vu maintenant ».
+      const ici = l.nombre || "sin nombre", maintenant = new Date().toISOString();
+      const ap = lire(CLES_PROGRESO.aparatos, {});
+      ap[ici] = { desde: (ap[ici] && ap[ici].desde) || maintenant, visto: maintenant };
+      ecrire(CLES_PROGRESO.aparatos, ap);
       const d = await poster(l, { accion: "progreso", progreso: progresoLocal() }, enPartant);
       // On refusionne avec le local du moment : il a pu changer pendant l'envoi (un cromo gagné, par exemple).
       ecrireProgreso(fusionnerProgreso(progresoLocal(), d.progreso));
