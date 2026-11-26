@@ -219,6 +219,26 @@
   .horloge{width:150px;height:150px;position:relative;display:grid;place-items:center;font-size:34px;font-weight:850;font-variant-numeric:tabular-nums}
   .horloge svg{position:absolute;inset:0;transform:rotate(-90deg)}
   .horloge circle{fill:none;stroke-width:10}
+
+  /* Mini-parties entre les blocs (mini-parties.js, 26 nov. 2026) : le plan ✏️✏️✏️ 🎮 ✏️✏️ 🎮 ✏️ 🎁 en haut */
+  .chemin.avec-jeux{gap:4px}
+  .chemin .case-jeu{flex:0 0 24px;height:40px;display:grid;place-items:center;color:var(--jaune);transition:transform .4s var(--ease),opacity .4s}
+  .chemin .case-jeu svg{width:24px;height:24px}
+  .chemin .case-jeu.ici{transform:scale(1.25)}
+  .chemin .case-jeu.faite{opacity:.45}
+  .mini-sobre{display:inline-block;width:18px;height:22px;border-radius:3px;vertical-align:-4px;background:linear-gradient(135deg,var(--rouge) 0 50%,var(--jaune) 50%)}
+  .chemin .case-sobre .mini-sobre{width:20px;height:24px}
+  .voile-jeu{z-index:40}
+  .voile-jeu .cadre-jeu{position:absolute;inset:0;width:100%;height:100%;border:0;background:var(--page)}
+  .voile-jeu.retour h2{font-size:44px}
+  .voile-jeu.retour p{font-size:24px;font-weight:800;color:#fff;max-width:18ch}
+  .seguimos{position:relative;overflow:hidden;min-height:96px;font-size:34px}
+  .seguimos span{position:relative}
+  /* le bouton se remplit pendant 8 s, puis l'exercice repart tout seul */
+  .seguimos i{position:absolute;inset:0;width:0;background:rgba(255,255,255,.45);animation:relance var(--relance,8s) linear forwards}
+  @keyframes relance{to{width:100%}}
+  .choix-jeux{display:flex;flex-direction:column;gap:14px;width:min(340px,90vw)}
+  .carte-jeu{min-height:84px;border-radius:24px;border:4px solid #fff;color:var(--marine);font:inherit;font-size:24px;font-weight:900;box-shadow:0 6px 0 rgba(0,0,0,.25)}
 </style>
 </head>
 <body>
@@ -264,6 +284,7 @@
 <script src="animaux.js?v=12"></script>
 <script src="sync.js?v=7"></script>
 <script src="deberes.js?v=6"></script>
-<script src="moteur.js?v=25"></script>
+<script src="mini-parties.js?v=2"></script>
+<script src="moteur.js?v=26"></script>
 </body>
 </html>

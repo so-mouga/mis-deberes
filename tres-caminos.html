@@ -24,10 +24,10 @@
 </main>
 <section class="ecran-fin" id="fin" hidden></section>
 
-<script src="commun.js?v=10"></script>
+<script src="commun.js?v=11"></script>
 <script src="animaux.js?v=12"></script>
 <script src="sync.js?v=7"></script>
-<script src="pause-commun.js?v=2"></script>
+<script src="pause-commun.js?v=4"></script>
 <script>
 // Tres caminos : on court sur 3 chemins et on traverse les 4 mondes.
 // Une seule action : toucher à gauche ou à droite (le glissé marche aussi). Zéro échec : un obstacle fait « ¡Boing! ».
@@ -96,22 +96,29 @@
   let fini = false, debut = 0, items = 0, avance = 0, prochain = 6, tJeu = 0;
   let aimantT = 0, superT = 0, turboT = 0, olaT = 0, ralentiT = 0, flashT = 0, secousse = 0;
   let etape = 0, evPassage = false, evPluie = false, combo = 0, dernierItem = -9, nFile = 0, dejaWiii = false;
-  const ETAPE = TEST_RAPIDE ? Math.max(5000, DUREE_JEU / 4) : 40000; // un monde toutes les 40 s
+  // Mode « partie » (entre deux blocs de devoirs) : départ 3-2-1, 2 mondes (courte, ≈ 1 min) ou 4 (longue), puis la ligne d'arrivée.
+  // La graine change à chaque partie : autre monde de départ, autre monde suivant, autres trésors et bonus.
+  const PARTIE = !!MODE_PARTIE, DUREE_P = TEST_RAPIDE ? DUREE_JEU : DUREE_CIBLE;
+  const N_MONDES = PARTIE_COURTE ? 2 : 4, DEPART = PARTIE ? 2600 : 0, PAS_MONDE = PARTIE_COURTE ? 1 + Math.floor(GRAINE / 4) % 3 : 1;
+  const ETAPE = PARTIE ? (DUREE_P - DEPART - 4500) / N_MONDES : TEST_RAPIDE ? Math.max(5000, DUREE_JEU / 4) : 40000; // un monde toutes les 40 s
+  const auHasard = (a) => () => { a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+  const rnd = PARTIE ? auHasard(GRAINE * 7919) : Math.random;
+  let ligne = false, arriveT = -1, casiDit = false, compte = -1;
   const objets = [], decor = [], bords = [], zones = [], pops = [], fumees = [], traits = [], fichiers = {};
   const eclats = new Eclats();
   const heros = { c: 0, vis: 0, boing: 0, img: imageSure(), taille: 1, pas: 0, sautT: 0, h: 0, rebond: 0, solAvant: true, vers: 1, sprite: null };
 
   function commencer(a) {
-    A = a; F = famille(a.n); M = mPrec = mSem = a.m; iMonde = TOUR.indexOf(a.m); audio().resume?.();
+    A = a; F = famille(a.n); M = mPrec = mSem = PARTIE ? TOUR[GRAINE % 4] : a.m; iMonde = TOUR.indexOf(M); audio().resume?.();
     $("choix").hidden = true; $("terrain").hidden = false; dimensionner();
     couleurPastille();
     heros.img.src = imgAnimal(a.n);
     heros.sprite = chargerSprites([a.n])[a.n];
     for (let d = 2; d < LOIN; d += 3.2) decor.push({ c: Math.random() < .5 ? -2 : 2, d, k: Math.random(), m: M });
     for (let d = 0; d < LOIN; d += 1.3) bords.push({ c: (Math.random() < .5 ? -1 : 1) * (1.75 + Math.random() * 1.2), d, k: Math.random() });
-    dire(`¡${nomMaj(a)} corre! ${FAMILLES[F].voix} Toca a la izquierda o a la derecha.`);
-    bulle("◀ Toca un lado ▶", 3000);
-    debut = Date.now(); minuteur(); requestAnimationFrame(boucle);
+    if (PARTIE) { dire(`¡${nomMaj(a)} corre hasta la meta! Preparados, listos… ¡ya!`); bulle("◀ Toca un lado ▶", 3500); }
+    else { dire(`¡${nomMaj(a)} corre! ${FAMILLES[F].voix} Toca a la izquierda o a la derecha.`); bulle("◀ Toca un lado ▶", 3000); minuteur(); }
+    debut = Date.now(); requestAnimationFrame(boucle);
   }
   function couleurPastille() { $("pastille").style.background = MONDES[M].couleur; $("pastille").style.borderColor = MONDES[M].bord; }
 
@@ -131,11 +138,11 @@
   const ajouter = (o) => (objets.push({ m: mSem, ...o }), o);
   function file(c, d, n, pas = 1.1) { const id = ++nFile; fichiers[id] = { n, pris: 0 }; for (let i = 0; i < n; i++) ajouter({ t: "item", c, d: d + i * pas, file: id }); }
   function semer() {
-    const d = LOIN, r = Math.random(), libre = Math.floor(Math.random() * 3) - 1, autre = libre === 0 ? (Math.random() < .5 ? -1 : 1) : 0;
-    if (r < .34) { file(libre, d, 5); if (Math.random() < .55) ajouter({ t: "obst", c: autre, d: d + 2 }); prochain = 7.5; }
+    const d = LOIN, r = rnd(), libre = Math.floor(rnd() * 3) - 1, autre = libre === 0 ? (rnd() < .5 ? -1 : 1) : 0;
+    if (r < .34) { file(libre, d, 5); if (rnd() < .55) ajouter({ t: "obst", c: autre, d: d + 2 }); prochain = 7.5; }
     else if (r < .62) { [-1, 0, 1].filter((c) => c !== libre).forEach((c) => ajouter({ t: "obst", c, d })); file(libre, d, 3); prochain = 8; }
     else if (r < .74) { ajouter({ t: "turbo", c: libre, d }); file(libre, d + 1.5, 4); prochain = 8; }
-    else if (r < .84) { ajouter({ t: F === "geant" && Math.random() < .5 ? "vague" : Math.random() < .5 ? "etoile" : "aimant", c: libre, d }); prochain = 5; }
+    else if (r < .84) { ajouter({ t: F === "geant" && rnd() < .5 ? "vague" : rnd() < .5 ? "etoile" : "aimant", c: libre, d }); prochain = 5; }
     else if (r < .92) { [-1, 0, 1].forEach((c) => ajouter({ t: "item", c, d })); prochain = 5; }
     else { const id = ++nFile; fichiers[id] = { n: 7, pris: 0 }; [-1, 0, 1, 0, -1, 0, 1].forEach((c, i) => ajouter({ t: "item", c, d: d + i * 1.3, file: id })); prochain = 11; }
   }
@@ -154,18 +161,18 @@
       for (let d = d0 + 1; d < d0 + long - 1; d += 1.5) [-1, 0, 1].forEach((c) => ajouter({ t: "item", c, d }));
     } else {
       [[d0 + 5, -1], [d0 + long * .45, 1], [d0 + long * .8, 0]].forEach(([d, c]) => ajouter({ t: "oeuf", c, d }));
-      for (let d = d0 + 2; d < d0 + long - 1; d += 2.2) ajouter({ t: "item", c: Math.floor(Math.random() * 3) - 1, d });
+      for (let d = d0 + 2; d < d0 + long - 1; d += 2.2) ajouter({ t: "item", c: Math.floor(rnd() * 3) - 1, d });
     }
     prochain = long + 3;
   }
   function pluie() {
     const long = TEST_RAPIDE ? 12 : 16;
-    for (let d = LOIN; d < LOIN + long; d += 1.15) ajouter({ t: "item", c: Math.floor(Math.random() * 3) - 1, d, chute: 1 });
+    for (let d = LOIN; d < LOIN + long; d += 1.15) ajouter({ t: "item", c: Math.floor(rnd() * 3) - 1, d, chute: 1 });
     zones.push({ k: "pluie", d0: LOIN, d1: LOIN + long, m: mSem, dit: false });
     prochain = long + 2;
   }
   function nouveauMonde() { // une porte arrive au loin ; derrière, tout est du nouveau monde
-    iMonde = (iMonde + 1) % 4; const m = TOUR[iMonde];
+    iMonde = (iMonde + PAS_MONDE) % 4; const m = TOUR[iMonde];
     ajouter({ t: "porte", c: 0, d: LOIN, m }); mSem = m; prochain = Math.max(prochain, 3);
   }
   function entrerMonde(m) {
@@ -175,11 +182,24 @@
     dire(`¡Bienvenido a ${W.nom}! ¡A buscar ${W.item}!`);
     confettis(L / 2, H * .45, 34);
   }
+  // La ligne d'arrivée (mode partie) : une file de trésors dans les 3 chemins, puis l'arche « ¡META! »
+  function poserLigne() {
+    ligne = true; prochain = 1e9;
+    for (let i = objets.length - 1; i >= 0; i--) if (objets[i].t === "obst" && objets[i].d > 12) objets.splice(i, 1); // la dernière ligne droite est libre
+    for (let d = LOIN - 9; d < LOIN - .5; d += 1.4) [-1, 0, 1].forEach((c) => { if (!objets.some((o) => Math.abs(o.d - d) < .7 && o.t !== "item")) ajouter({ t: "item", c, d }); });
+    ajouter({ t: "arrivee", c: 0, d: LOIN });
+  }
+  function arriver() {
+    arriveT = 0; flashT = .6; secousse = 1.2; sonFanfare(); setTimeout(sonFanfare, 450); vibrer([30, 40, 30, 40, 60]);
+    bulle("¡Has llegado!", 3000, true); confettis(L / 2, H * .4, 60); confettis(L * .2, H * .5, 25); confettis(L * .8, H * .5, 25);
+    $("barre").style.transform = "scaleX(0)";
+    setTimeout(() => { fini = true; finPartie({ titre: "¡Has llegado!", phrase: `${nomMaj(A)} ha recogido ${items} tesoros.` }); }, 2400);
+  }
   const dansZone = (k) => zones.some((z) => z.k === k && z.d0 < .3 && z.d1 > -.3);
 
   // Vitesse : un cran de plus à chaque monde, plafonnée pour qu'il voie toujours les trésors
   function vitesse() {
-    const base = 9 + Math.min(4, etape) * .9, f = F === "rapide" ? 1.2 : F === "double" ? .85 : 1;
+    const base = 9 + Math.min(4, etape * (PARTIE_COURTE ? 2 : 1)) * .9, f = F === "rapide" ? 1.2 : F === "double" ? .85 : 1;
     const mult = (superT > 0 ? 1.3 : 1) * (turboT > 0 ? 1.5 : 1) * (dansZone("tobogan") ? 1.45 : 1) * (heros.boing > 0 ? .55 : 1);
     return Math.min(19, base * f * mult);
   }
@@ -323,6 +343,17 @@
         g.strokeStyle = col; g.lineWidth = lw * s; g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(a.x, cy); g.ellipse(cx, cy, rx, h * .45, 0, Math.PI, 0); g.lineTo(b.x, b.y); g.stroke();
       }
       g.fillStyle = "#fff"; for (const f of [.2, .5, .8]) { const ang = Math.PI + f * Math.PI; g.beginPath(); g.arc(cx + Math.cos(ang) * rx, cy + Math.sin(ang) * h * .45, 5 * s, 0, 7); g.fill(); }
+    } else if (o.t === "arrivee") { // la ligne d'arrivée : damier au sol, deux mâts, banderole « ¡META! »
+      for (let k = 0; k < 8; k++) for (let j = 0; j < 2; j++) { g.fillStyle = (k + j) % 2 ? "#1E2A44" : "#FFFFFF"; quadSol(-1.6 + k * .4, -1.2 + k * .4, o.d + j * .35, o.d + j * .35 + .35); g.fill(); }
+      const a = proj(-1.9, o.d), b = proj(1.9, o.d), h = 240 * U * a.s, pw = 18 * U * a.s, bh = 62 * U * a.s;
+      g.fillStyle = "#fff"; g.lineWidth = Math.max(1, 4 * U * a.s);
+      rect(a.x - pw / 2, a.y - h, pw, h, 6 * U * a.s); g.fill(); g.stroke(); rect(b.x - pw / 2, b.y - h, pw, h, 6 * U * a.s); g.fill(); g.stroke();
+      for (const x of [a.x, b.x]) { g.fillStyle = ARC[(Math.floor(t / 250) + (x === a.x ? 0 : 3)) % 6]; g.beginPath(); g.moveTo(x, a.y - h); g.lineTo(x + 40 * U * a.s * (x === a.x ? -1 : 1), a.y - h + 14 * U * a.s + Math.sin(t / 120) * 4 * U * a.s); g.lineTo(x, a.y - h + 28 * U * a.s); g.fill(); g.stroke(); }
+      const bx = a.x - pw, bw = b.x - a.x + pw * 2, by = a.y - h + 20 * U * a.s, cw = bw / 12;
+      for (let k = 0; k < 12; k++) for (let j = 0; j < 2; j++) { g.fillStyle = (k + j) % 2 ? "#1E2A44" : "#fff"; g.fillRect(bx + k * cw, by + j * bh / 2, cw + .5, bh / 2); }
+      rect(bx + bw * .22, by + bh * .12, bw * .56, bh * .76, 12 * U * a.s); g.fillStyle = "#F2B90F"; g.fill(); g.stroke();
+      g.fillStyle = "#1E2A44"; g.font = `900 ${Math.max(6, 34 * U * a.s)}px Lexend, system-ui, sans-serif`; g.textAlign = "center"; g.textBaseline = "middle";
+      g.fillText("¡META!", a.x + (b.x - a.x) / 2, by + bh / 2);
     } else if (o.t === "porte") { // la porte d'un nouveau monde
       const N = MONDES[o.m], a = proj(-1.9, o.d), b = proj(1.9, o.d), h = 230 * U * a.s, pw = 22 * U * a.s;
       g.fillStyle = N.bord; g.lineWidth = Math.max(1, 4 * U * a.s);
@@ -427,6 +458,7 @@
       const o = objets[i];
       if (o.d < -1.5 || o.pris || o.casse) { objets.splice(i, 1); continue; }
       if (o.t === "porte") { if (o.d < .2 && !o.passe) { o.passe = true; entrerMonde(o.m); } continue; }
+      if (o.t === "arrivee") { if (o.d < .2 && !o.passe) { o.passe = true; arriver(); } continue; }
       if (o.t === "arcade") continue;
       if (o.d > .6 || o.d < -.4 || o.touche) continue;
       const voisin = Math.abs(o.c - heros.c) <= .4 || (olaT > 0 && o.t === "item");
@@ -460,12 +492,21 @@
     const dtReel = Math.min(.04, (t - avant) / 1000); avant = t;
     const dt = dtReel * (ralentiT > 0 ? .35 : 1); tJeu += dtReel;
     // le voyage : un nouveau monde toutes les 40 s, un passage spécial et une pluie de trésors dans chacun
-    const ecoule = Date.now() - debut, e = Math.floor(ecoule / ETAPE), frac = (ecoule % ETAPE) / ETAPE;
-    if (e > etape) { etape = e; evPassage = evPluie = false; nouveauMonde(); }
-    if (!evPassage && frac > .3 && !zones.some((z) => z.d1 > 0)) { evPassage = true; passage(); }
-    if (!evPluie && frac > .72 && !zones.some((z) => z.d1 > 0)) { evPluie = true; pluie(); }
+    const ecoule = Date.now() - debut, enCourse = Math.max(0, ecoule - DEPART), e = Math.floor(enCourse / ETAPE), frac = (enCourse % ETAPE) / ETAPE;
+    if (PARTIE) { // 3, 2, 1, ¡ya! ; la barre suit la distance jusqu'à la meta ; « ¡Ya casi llegas! » à la fin
+      const k = Math.min(4, Math.floor(ecoule / 650));
+      if (k > compte) { compte = k; pop(L / 2, H * .42, ["3", "2", "1", "¡Ya!"][k] || "", k === 3 ? "#F2B90F" : "#fff", k === 3 ? 64 : 72); if (k < 4) note(k === 3 ? 880 : 440, k === 3 ? 1320 : 440, k === 3 ? .3 : .15, .12, "triangle"); }
+      if (arriveT < 0) $("barre").style.transform = `scaleX(${Math.max(0, 1 - ecoule / DUREE_P)})`;
+      if (!casiDit && ecoule > DUREE_P - Math.min(10000, DUREE_P * .2)) { casiDit = true; const u = $("ultimo"); u.textContent = "¡Ya casi llegas!"; u.hidden = false; dire("¡Ya casi llegas! ¡Corre!"); }
+      if (!ligne && ecoule > DUREE_P - (LOIN / vitesse()) * 1000 - 400) poserLigne();
+    }
+    if (e > etape && !ligne && (!PARTIE || e < N_MONDES)) { etape = e; evPassage = evPluie = false; nouveauMonde(); }
+    if (!ligne && !evPassage && frac > .3 && !zones.some((z) => z.d1 > 0)) { evPassage = true; passage(); }
+    if (!ligne && !evPluie && frac > .72 && !zones.some((z) => z.d1 > 0)) { evPluie = true; pluie(); }
+    if (arriveT >= 0) { arriveT += dtReel; if (Math.random() < .5 && !DOUX) confettis(Math.random() * L, -10, 2); }
+    const frein = PARTIE && ecoule < DEPART ? 0 : arriveT >= 0 ? Math.max(0, 1 - arriveT / 1.3) : 1;
 
-    const v = vitesse() * dt; avance += v;
+    const v = vitesse() * dt * frein; avance += v;
     superT = Math.max(0, superT - dt); aimantT = Math.max(0, aimantT - dt); turboT = Math.max(0, turboT - dt); olaT = Math.max(0, olaT - dt);
     ralentiT = Math.max(0, ralentiT - dtReel); flashT = Math.max(0, flashT - dtReel); secousse = Math.max(0, secousse - dtReel * 2.5);
     heros.boing = Math.max(0, heros.boing - dt); heros.sautT = Math.max(0, heros.sautT - dt); heros.rebond = Math.max(0, heros.rebond - dt);
@@ -515,9 +556,9 @@
   // ---- Minuteur : arrêt automatique, « ¡Último minuto! » 30 s avant, puis la ballena ----
   const minuteur = () => minuteurJeu({ barre: $("barre"), bandeau: $("ultimo"), annonce: "¡Último minuto! ¡Corre, corre!",
     surFin: () => { fini = true; finDePause($("fin"), "¡Qué carrera!", `${nomMaj(A)} ha recogido ${items} tesoros y ha visitado ${Math.min(4, visites)} ${visites > 1 ? "mundos" : "mundo"}.`); } });
-  if (TEST_RAPIDE) window.caminos = {
+  if (TEST_RAPIDE || PARTIE) window.caminos = {
     get items() { return items; }, get heros() { return heros; }, get objets() { return objets.length; }, get monde() { return M; },
-    get zones() { return zones.map((z) => z.k); }, get famille() { return F; }, get visites() { return visites; },
+    get zones() { return zones.map((z) => z.k); }, get famille() { return F; }, get visites() { return visites; }, get ligne() { return ligne; },
     passage: () => passage(), pluie: () => pluie(), mondeSuivant: () => nouveauMonde(),
   };
 })();

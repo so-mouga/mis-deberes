@@ -185,6 +185,10 @@ select,input[type=date],input[type=text]{min-height:44px;border-radius:10px;bord
 .choix-l{display:inline-flex;border:1px solid var(--trait-fort);border-radius:10px;overflow:hidden}
 .choix-l button{padding:8px 12px;font-size:14px;font-weight:600;color:var(--encre-2)}
 .choix-l button[aria-pressed=true]{background:var(--accent-doux);color:var(--accent)}
+.choix-l.col{display:flex;flex-direction:column;margin-top:8px}
+.choix-l.col button{text-align:left;padding:11px 14px}
+.choix-l.col button + button{border-top:1px solid var(--trait)}
+.choix-l.col button[aria-pressed=true]::before{content:"✓ "}
 .danger{color:var(--rouge)}
 .ajout{padding:14px 18px;border-top:1px solid var(--trait);display:flex;flex-direction:column;gap:10px}
 .ajout .rang{display:flex;gap:8px}
@@ -298,6 +302,8 @@ select,input[type=date],input[type=text]{min-height:44px;border-radius:10px;bord
       m_total: "total ou différence ?", m_signe: "additionner ou soustraire ?", m_unites: "unités", m_dizaines: "dizaines", m_palitos: "bâtonnets (dizaines et unités)",
       gSeance: "La séance", trabajo: "Temps de travail avant la pause", pausa: "Durée de la pause", repaso: "Jour du Repaso", tranquilo: "Rythme tranquille (s'il va trop vite)",
       mn: (n) => `${n} min`, chaque: (j) => `Le ${j}`,
+      modeLab: "Pause", modeMini: "Petites parties entre les exercices", modeGrande: "Une grande pause à la fin",
+      jeuxLab: "Jeux (un au hasard parmi ceux cochés)", blocLab: "Une partie tous les…", blocN: (n) => `${n} exercices`, unJeu: "Garde au moins un jeu coché.",
       gJeu: "Jeux", parties: (n) => (n ? `Dorian a ${n} partie${n > 1 ? "s" : ""} à jouer` : "Dorian n'a pas de partie à jouer"), partiesInconnu: "Parties : pas d'internet",
       regaloAttente: " (un cadeau attend internet)", offrir: "Offrir une partie", offrirConfirm: "Offrir une partie à Dorian ?", libre: "Partie offerte jusqu'à la fin du jeu (15 min max.)",
       gTel: "Téléphones de Dorian", vu: "vu", ajouterTel: "Ajouter un téléphone", nomTel: "Nom du téléphone (ex. : téléphone de mamie)", creer: "Créer",
@@ -342,6 +348,8 @@ select,input[type=date],input[type=text]{min-height:44px;border-radius:10px;bord
       m_total: "¿total o diferencia?", m_signe: "¿sumar o restar?", m_unites: "unidades", m_dizaines: "decenas", m_palitos: "palitos (decenas y unidades)",
       gSeance: "La sesión", trabajo: "Tiempo de trabajo antes del descanso", pausa: "Duración del descanso", repaso: "Día del repaso", tranquilo: "Ritmo tranquilo (si va demasiado rápido)",
       mn: (n) => `${n} min`, chaque: (j) => `Cada ${j}`,
+      modeLab: "Descanso", modeMini: "Mini-partidas entre ejercicios", modeGrande: "Una pausa grande al final",
+      jeuxLab: "Juegos (uno al azar entre los marcados)", blocLab: "Un juego cada…", blocN: (n) => `${n} ejercicios`, unJeu: "Deja al menos un juego marcado.",
       gJeu: "Juegos", parties: (n) => (n ? `Dorian tiene ${n} ${n > 1 ? "partidas" : "partida"} para jugar` : "Dorian no tiene partidas pendientes"), partiesInconnu: "Partidas: sin conexión",
       regaloAttente: " (un regalo espera conexión)", offrir: "Regalar una partida", offrirConfirm: "¿Regalar una partida a Dorian?", libre: "Partida regalada hasta terminar el juego (máx. 15 min)",
       gTel: "Móviles de Dorian", vu: "visto", ajouterTel: "Añadir un móvil", nomTel: "Nombre del móvil (p. ej.: móvil de la abuela)", creer: "Crear",
@@ -617,21 +625,34 @@ select,input[type=date],input[type=text]{min-height:44px;border-radius:10px;bord
     if (!P && !attente) return t("partiesInconnu");
     return t("parties", Math.max(0, Object.keys(tk.ganados).length - Object.keys(tk.gastados).length) + attente) + (attente ? t("regaloAttente") : "");
   }
+  // Les jeux de la pause (BRIEF-mini-parties.md) : rangés dans « pausa » (clé déjà connue du script Google : rien à redéployer).
+  // pausa.juegos = { modo: "mini" | "pausa", eleccion, duracion, bloque, permitidos: [...] } ; seuls le mode et les jeux se règlent ici,
+  // le reste garde les valeurs du brief (au hasard, partie courte, 3 exercices).
+  const JEUX = [["minero", "El pequeño minero"], ["guardianes", "Los guardianes"], ["burbujas", "Cañón de burbujas"], ["caminos", "Tres caminos"]];
+  const JEUX_DEFAUT = { modo: "mini", eleccion: "auto", duracion: "corta", bloque: 3, permitidos: JEUX.map(([id]) => id) };
+  const juegos = () => ({ ...JEUX_DEFAUT, ...((A.pausa || {}).juegos || {}) });
+  const changerJeux = (partiel) => changer({ pausa: { ...(A.pausa || {}), juegos: { ...juegos(), ...partiel } } });
+
   function pageReglages() {
     const pz = A.pausa || {};
     const opt = (v, lab, sel) => `<option value="${v}"${v === sel ? " selected" : ""}>${lab}</option>`;
     const ap = Object.entries((P && P.aparatos) || {}).sort((x, y) => String(y[1].visto).localeCompare(String(x[1].visto)));
     const vu = (iso) => { const j = Deberes.jour(new Date(iso)); return j === hoy() ? `${t("auj")} ${heure(iso)}` : quand(j); };
+    const jx = juegos();
     return `<h1>${t("reglages")}</h1>
-      <h2>${t("gSeance")}</h2><div class="carte">
-        ${reg(t("trabajo"), `<select id="trabajoMin" aria-label="${t("trabajo")}">${[10, 15, 20].map((n) => opt(n, t("mn", n), [15, 20].includes(pz.trabajo) ? pz.trabajo : 10)).join("")}</select>`)}
-        ${reg(t("pausa"), `<select id="pausaMin" aria-label="${t("pausa")}">${[5, 10].map((n) => opt(n, t("mn", n), pz.minutos === 10 ? 10 : 5)).join("")}</select>`)}
-        ${reg(t("repaso"), `<select id="repasoDia" aria-label="${t("repaso")}">${[1, 2, 3, 4, 5, 6, 0].map((d) => opt(d, t("chaque", t("joursL")[d]), +(A.repasoDia ?? 5))).join("")}</select>`)}
-        ${reg(t("tranquilo"), `<input type="checkbox" class="inter" id="tranquilo" aria-label="${t("tranquilo")}"${pz.tranquilo ? " checked" : ""}>`)}
-      </div>
       <h2>${t("gJeu")}</h2><div class="carte">
+        <div class="reglage" style="display:block"><span class="lib">${t("modeLab")}</span><div class="choix-l col" role="group" aria-label="${t("modeLab")}"><button data-mode="mini" aria-pressed="${jx.modo === "mini"}">${t("modeMini")}</button><button data-mode="pausa" aria-pressed="${jx.modo === "pausa"}">${t("modeGrande")}</button></div></div>
+        ${jx.modo === "mini" ? `${reg(t("blocLab"), `<select id="blocJeux" aria-label="${t("blocLab")}">${[2, 3].map((n) => opt(n, t("blocN", n), +jx.bloque === 2 ? 2 : 3)).join("")}</select>`)}<div class="reglage" style="display:block"><span class="lib">${t("jeuxLab")}</span>
+          <ul class="prog" style="margin-top:4px">${JEUX.map(([id, nom]) => `<li><label><input type="checkbox" data-jeu="${id}"${jx.permitidos.includes(id) ? " checked" : ""}><span>${nom}</span></label></li>`).join("")}</ul>
+          <p class="petit" id="msgJeux" role="alert" style="margin-top:2px"></p></div>` : `
+        ${reg(t("trabajo"), `<select id="trabajoMin" aria-label="${t("trabajo")}">${[10, 15, 20].map((n) => opt(n, t("mn", n), [15, 20].includes(pz.trabajo) ? pz.trabajo : 10)).join("")}</select>`)}
+        ${reg(t("pausa"), `<select id="pausaMin" aria-label="${t("pausa")}">${[5, 10].map((n) => opt(n, t("mn", n), pz.minutos === 10 ? 10 : 5)).join("")}</select>`)}`}
         ${reg(echap(nbParties()), `<button class="btn" id="regalar">${t("offrir")}</button>`)}
         ${reg(t("libre"), `<input type="checkbox" class="inter" id="libreBonus" aria-label="${t("libre")}"${pz.libreEnBonus ? " checked" : ""}>`)}
+      </div>
+      <h2>${t("gSeance")}</h2><div class="carte">
+        ${reg(t("repaso"), `<select id="repasoDia" aria-label="${t("repaso")}">${[1, 2, 3, 4, 5, 6, 0].map((d) => opt(d, t("chaque", t("joursL")[d]), +(A.repasoDia ?? 5))).join("")}</select>`)}
+        ${reg(t("tranquilo"), `<input type="checkbox" class="inter" id="tranquilo" aria-label="${t("tranquilo")}"${pz.tranquilo ? " checked" : ""}>`)}
       </div>
       <h2>${t("gTel")}</h2><div class="carte">
         ${ap.length ? ap.map(([n, a]) => reg(echap(n), `<small>${t("vu")} ${vu(a.visto)}</small>`)).join("") : `<p class="rien">${t("aucunTel")}</p>`}
@@ -699,6 +720,7 @@ select,input[type=date],input[type=text]{min-height:44px;border-radius:10px;bord
       if (page !== "semaine") { decalage = Math.round(Deberes.ecart(lundiDe(hoy()), lundiDe(x.dataset.j)) / 7); jourVu = x.dataset.j; location.hash = "semaine"; return; }
       jourVu = jourVu === x.dataset.j ? null : x.dataset.j; afficher(); return;
     }
+    if ((x = el("[data-mode]"))) return changerJeux({ modo: x.dataset.mode });
     if (el("#regalar")) return regaler();
     if (el("#creerLien")) return creerLien();
     if (el("#partager")) { navigator.share?.({ title: t("marque"), text: t("partageTexte"), url: lienCree }).catch(() => {}); return; }
@@ -713,6 +735,12 @@ select,input[type=date],input[type=text]{min-height:44px;border-radius:10px;bord
     if (c.dataset.ex) return changerExamen(c.dataset.ex, c.value && c.value >= hoy() ? c.value : "");
     if (c.id === "forcer") { forcerOuvert = !!c.value; return changer({ forzada: c.value ? { lecon: c.value, fecha: hoy() } : null }); }
     if (c.id === "repasoDia") return changer({ repasoDia: +c.value });
+    if (c.id === "blocJeux") return changerJeux({ bloque: +c.value === 2 ? 2 : 3 });
+    if (c.dataset.jeu) {
+      const liste = [...document.querySelectorAll("[data-jeu]:checked")].map((e) => e.dataset.jeu);
+      if (!liste.length) { c.checked = true; $("msgJeux").textContent = t("unJeu"); return; }
+      return changerJeux({ permitidos: liste });
+    }
     if (["trabajoMin", "pausaMin", "tranquilo", "libreBonus"].includes(c.id)) {
       const pz = A.pausa || {};
       return changer({ pausa: { ...pz, minutos: +($("pausaMin")?.value || pz.minutos || 5) === 10 ? 10 : 5, trabajo: +($("trabajoMin")?.value || pz.trabajo || 10),

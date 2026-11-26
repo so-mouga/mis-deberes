@@ -6,6 +6,23 @@
 const PARAMS_JEU = new URLSearchParams(location.search);
 const TEST_RAPIDE = PARAMS_JEU.has("duree");
 
+// ---- Mode « partie » : une mini-partie entre deux blocs de devoirs (BRIEF-mini-parties.md, 26 nov. 2026) ----
+// La séance ouvre le jeu dans un cadre (iframe) : <jeu>.html?partie=courte&animal=7&graine=12
+//   partie  : « courte » (≈ 1 min) ou « longue » (≈ 2–3 min) ;
+//   animal  : l'animal choisi par l'appli (pas de menu de choix) ; graine : un nombre qui change à chaque partie.
+// Le jeu annonce SA vraie fin avec finPartie({ titre, phrase }) : arrivée, trésor, boss… Pas de ballena dans ce mode.
+// Un jeu qui n'a pas encore sa vraie fin s'arrête au minuteur (DUREE_JEU = la durée cible), puis finDePause → finPartie.
+const MODE_PARTIE = ["courte", "longue"].includes(PARAMS_JEU.get("partie")) ? PARAMS_JEU.get("partie") : null;
+const PARTIE_COURTE = MODE_PARTIE === "courte";
+const DUREE_CIBLE = PARTIE_COURTE ? 60000 : 150000; // ce que vise une partie (le jeu peut finir un peu avant ou après)
+const ANIMAL_IMPOSE = +PARAMS_JEU.get("animal") || 0;
+const GRAINE = +PARAMS_JEU.get("graine") || Math.floor(Math.random() * 1e6);
+// Dans la séance (cadre) : la voix et les sons passent par la page de la séance, que Dorian a déjà touchée.
+// Sur Android, un cadre tout neuf n'a pas le droit de parler ni de jouer un son avant qu'on l'ait touché.
+if (MODE_PARTIE && window.parent !== window) {
+  try { const P = window.parent; if (P.dire && P.audio) { CTX = P.audio(); window.dire = (...a) => P.dire(...a); } } catch {}
+}
+
 // ---- Le verrou (décidé avec Kevin le 25 nov. 2026) ----
 // Les jeux s'ouvrent à l'accueil une fois une séance finie aujourd'hui (sur ce téléphone ou un autre, via la progression),
 // ou si un adulte les a ouverts pour la journée (un calcul, sur l'accueil). Pendant la pause entre deux séances (?pausa=ID), toujours.
@@ -21,7 +38,7 @@ function juegosAbiertos() {
 const ouvrirJuegosHoy = () => { try { localStorage.setItem(JEUX_OUVERTS_CLE, aujourdhuiJeu()); } catch {} };
 const EN_PAUSE = PARAMS_JEU.get("pausa"); // l'id de la leçon qu'on vient de finir, si on vient de la pause
 // Une page de jeu ouverte sans droit (adresse tapée, ancien onglet) ramène à l'accueil.
-if (typeof NE_PAS_VERROUILLER === "undefined" && !EN_PAUSE && !TEST_RAPIDE && !juegosAbiertos()) location.replace("index.html");
+if (typeof NE_PAS_VERROUILLER === "undefined" && !EN_PAUSE && !MODE_PARTIE && !TEST_RAPIDE && !juegosAbiertos()) location.replace("index.html");
 
 // ---- Durée ----
 // La durée suit le réglage des parents (Sync.pausa(), espace parent) : pause de 5 min → 3 min de jeu, 10 min → 8 min.
@@ -30,6 +47,7 @@ if (typeof NE_PAS_VERROUILLER === "undefined" && !EN_PAUSE && !TEST_RAPIDE && !j
 const PARTIE_BONUS = PARAMS_JEU.has("bonus");
 function dureeDuJeu({ bonus = PARTIE_BONUS } = {}) {
   if (TEST_RAPIDE) return (+PARAMS_JEU.get("duree") || 180) * 1000;
+  if (MODE_PARTIE) return DUREE_CIBLE;
   const reglage = typeof Sync !== "undefined" && Sync.pausa ? Sync.pausa() : { minutos: 5, libreEnBonus: false, maxMinutos: 15 };
   if (bonus && reglage.libreEnBonus) return reglage.maxMinutos * 60000;
   return (reglage.minutos >= 10 ? 8 : 3) * 60000; // le reste de la pause : défi physique + ballena
@@ -113,6 +131,8 @@ function dessinerRond(g, img, a, x, y, r, { anneau = "#FFFFFF", bord = 5, t = 0 
 // ---- Écran « elige tu animal » ----
 // choixAnimal(conteneur, { sousTitre: (a) => "Salta doble", surChoix: (a) => … })
 function choixAnimal(conteneur, { sousTitre, surChoix }) {
+  // En mode partie, l'appli a déjà choisi l'animal : pas de menu.
+  if (MODE_PARTIE && ANIMAL_IMPOSE && animalN(ANIMAL_IMPOSE)) { conteneur.innerHTML = ""; setTimeout(() => surChoix(animalN(ANIMAL_IMPOSE))); return; }
   conteneur.innerHTML = "";
   mesAnimaux().forEach((n) => {
     const a = animalN(n), b = document.createElement("button");
@@ -180,7 +200,7 @@ function minuteurJeu({ barre, bandeau, annonce = "¡Último minuto! Casi es hora
   const tic = setInterval(() => {
     const reste = Math.max(0, duree - (Date.now() - debut));
     barre.style.transform = `scaleX(${reste / duree})`;
-    if (!avise && reste <= avant) { avise = true; bandeau.hidden = false; dire(annonce); }
+    if (!avise && reste <= avant) { avise = true; if (!MODE_PARTIE) { bandeau.hidden = false; dire(annonce); } } // pas de « ¡Último minuto! » dans une partie d'1 min
     if (!reste) { clearInterval(tic); surFin(); }
   }, 250);
   return () => clearInterval(tic);
@@ -190,6 +210,7 @@ const minuteurPause = ({ barre, bandeau, surFin }) => minuteurJeu({ barre, bande
 
 // ---- Fin : bravo, puis on respire avec la ballena, puis « ¡Seguimos! » ----
 function finDePause(conteneur, titre, phrase) {
+  if (MODE_PARTIE) return finPartie({ titre, phrase, conteneur });
   conteneur.innerHTML = `<div class="centre"><h2>${titre}</h2><p>${phrase}</p></div>`;
   conteneur.hidden = false;
   sonBien(); dire(titre.replace(/<[^>]+>/g, "") + " " + phrase + " Ahora, respira como una ballena.");
@@ -211,3 +232,20 @@ function finDePause(conteneur, titre, phrase) {
     }, TEST_RAPIDE ? 4000 : 20000);
   }, 3500);
 }
+
+// ---- Fin d'une partie (mode partie) ----
+// finPartie({ titre: "¡Has llegado!", phrase: "…" }) : à appeler par le jeu à SA vraie fin. Une seule fois (les appels suivants sont ignorés).
+// Dans la séance (iframe) : le message { type: "dorian:fin-partie", jeu, titre, phrase } part vers la page de la séance,
+// qui ferme le jeu et affiche le retour aux devoirs. Hors séance (test direct de l'adresse) : un écran bravo simple.
+let PARTIE_FINIE = false;
+function finPartie({ titre = "¡Muy bien!", phrase = "", conteneur } = {}) {
+  if (PARTIE_FINIE) return; PARTIE_FINIE = true;
+  const jeu = location.pathname.split("/").pop().replace(/\.html$/, "");
+  const texte = (t) => String(t || "").replace(/<[^>]+>/g, "");
+  if (window.parent !== window) { try { window.parent.postMessage({ type: "dorian:fin-partie", jeu, titre: texte(titre), phrase: texte(phrase) }, location.origin); } catch {} return; }
+  const c = conteneur || document.getElementById("fin") || document.body.appendChild(Object.assign(document.createElement("section"), { className: "ecran-fin" }));
+  c.innerHTML = `<div class="centre"><h2>${titre}</h2><p>${phrase}</p><a class="gros" href="${location.href}">Otra partida</a></div>`;
+  c.hidden = false; sonBien(); dire(texte(titre) + " " + texte(phrase));
+}
+// Filet : une partie qui n'a pas trouvé sa fin (jeu bloqué, onglet en veille…) se termine quand même.
+if (MODE_PARTIE && !TEST_RAPIDE) setTimeout(() => finPartie({ titre: "¡Muy bien!" }), 2 * DUREE_CIBLE + 10000);

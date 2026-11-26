@@ -13,6 +13,7 @@ const FAIRE = { descubre, toca, elige, vrai, letras, papa, cuaderno, palitos, pr
 const ETAPES = [...L.etapes, { type: "fin" }];
 $("chemin").innerHTML = ETAPES.map((e) => `<span class="case" role="img" aria-label="${Deberes.nomEtape(e)}" title="${Deberes.nomEtape(e)}">${ICONES[Deberes.ICONE[e.type]]}</span>`).join("");
 const cases = [...$("chemin").children];
+MiniPartidas.decorer($("chemin"), ETAPES.length - 1); // mode mini-parties : une manette entre les blocs, le paquet au bout
 const parle = (t, v = .8) => dire(t, LANGUE, v);
 
 // --- Consigne : toujours visible, toujours redisable ---
@@ -444,13 +445,26 @@ async function fin() {
     garder(a.n); sonTouche();
   }
   // 3. La pause se mérite au temps de travail : sinon, un peu de révision d'abord.
-  await revision();
+  //    Pas en mode mini-parties : là, chaque bloc fini a déjà donné sa partie, et la séance s'arrête toute seule.
+  if (!MiniPartidas.actif) await revision();
   // 4. La séance part vers le suivi (avec ses drapeaux), le ticket de jeu est gagné, puis la pause.
   const avisos = [];
   if (base < 3 * 60 * 1000 && L.etapes.length >= 4) avisos.push("rapida");
   if (Rythme.reponses >= 4 && Rythme.hasard * 2 > Rythme.reponses) avisos.push("azar");
   Deberes.terminer({ avisos });
+  if (MiniPartidas.actif) return deberesTerminados();
   descanso();
+}
+
+// Mode mini-parties : la fin automatique. La 2e séance est seulement proposée, comme après la grande pause.
+function deberesTerminados() {
+  const v = $("voileFin");
+  v.hidden = false;
+  const propo = Deberes.deuxiemeSeance(ID);
+  if (propo) return proposer(propo, "¡Deberes terminados!");
+  v.innerHTML = `<h2>¡Deberes terminados!</h2><p>¡Muy bien, Dorian! Hasta mañana.</p>
+    <a class="gros" href="index.html">Volver</a><a class="gros clair" href="album-animales.html">Ver mis animales</a>`;
+  dire("¡Deberes terminados! Muy bien, Dorian. ¡Hasta mañana!");
 }
 
 // La révision : des exercices autonomes jusqu'au temps de travail réglé par les parents (10 min par défaut).
@@ -522,12 +536,12 @@ function apresLaPause() {
 }
 
 // « ¿Hacemos también el inglés hoy? » : Dorian peut toujours dire non, sans rien perdre.
-function proposer(p) {
+function proposer(p, titre = "") {
   const v = $("voileFin");
-  v.innerHTML = `<h2>¡Muy bien, Dorian!</h2><p>Has terminado ${Deberes.matiere(ID)}. Tu descanso ha acabado.</p>
+  v.innerHTML = `<h2>${titre || "¡Muy bien, Dorian!"}</h2><p>Has terminado ${Deberes.matiere(ID)}.${titre ? "" : " Tu descanso ha acabado."}</p>
     <p class="propo">${p.question}<br><span>${p.raison}</span></p>
     <a class="gros" href="seance.html?lecon=${p.id}">${p.oui}</a><a class="gros clair" href="index.html">No, hoy ya está</a>`;
-  direSuite([["¡Muy bien, Dorian! Tu descanso ha acabado.", "es-ES"], [p.question, "es-ES"], [p.raison, "es-ES"]]);
+  direSuite([[titre ? titre + " ¡Muy bien, Dorian!" : "¡Muy bien, Dorian! Tu descanso ha acabado.", "es-ES"], [p.question, "es-ES"], [p.raison, "es-ES"]]);
 }
 
 // ---------- Pause demandée par Dorian ----------
@@ -574,5 +588,11 @@ if (DEMO) { if (!VOZ) window.dire = async () => {}; demoFaite = true; if (PARAMS
     if (i < depart) continue;
     cases.forEach((c, j) => { c.classList.toggle("faite", j < i); c.classList.toggle("ici", j === i); });
     if (e.type === "fin") await fin(); else await FAIRE[e.type](e);
+    // Mode mini-parties : après chaque bloc de 2 ou 3 étapes, une partie courte (le temps de jeu ne compte pas comme travail).
+    if (e.type !== "fin" && MiniPartidas.actif && MiniPartidas.apres(i, ETAPES.length - 1)) {
+      const debutJeu = Date.now();
+      await MiniPartidas.jouer(i, ETAPES.length - 1);
+      Travail.pauses += Date.now() - debutJeu;
+    }
   }
 })();

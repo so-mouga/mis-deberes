@@ -25,10 +25,10 @@
 </main>
 <section class="ecran-fin" id="fin" hidden></section>
 
-<script src="commun.js?v=10"></script>
+<script src="commun.js?v=11"></script>
 <script src="animaux.js?v=12"></script>
 <script src="sync.js?v=7"></script>
-<script src="pause-commun.js?v=2"></script>
+<script src="pause-commun.js?v=4"></script>
 <script>
 (() => {
   const $ = (id) => document.getElementById(id);
@@ -72,7 +72,7 @@
     gigantes: { item: "gemas",     couleur: "#E0453F", bord: "#A82B26" },
   };
   // Évolution du gardien : jamais liée à une réussite, on ramasse toujours
-  const NIVEAUX = [0, 35, 100, 200];
+  const NIVEAUX = PARTIE_COURTE ? [0, 18, 45, 80] : MODE_PARTIE ? [0, 50, 130, 240] : [0, 35, 100, 200]; // en partie : adaptés à la durée
   const ANNEAUX = ["#FFFFFF", "#C9D6F5", "#F2B90F", "arc"];
   const ARC = ["#E0453F", "#F08A1C", "#F2B90F", "#2E9E57", "#3FB8E8", "#B05BE0"];
 
@@ -114,13 +114,14 @@
   // ---- État de la partie ----
   let A, P, nage, monde, fini = false, dist = 0, vitesse = 0, prochain = 0, derniereEtoile = 0;
   let items = 0, niveau = 0, superT = 0, secousse = 0, debut = 0, flash = 0, ceremonie = 0, boost = 0, doubles = 0;
-  let aSemer = null, prochaineSurprise = 0, ordreSurprises = [], lluviaT = 0, lluviaPas = 0, amigo = null;
+  const fileSemer = []; let finale = 0, portailPose = false, dansPortail = 1; // finale : 0 = rien, 1 = annoncée, 2 = dans le portail
+  let prochaineSurprise = 0, ordreSurprises = [], lluviaT = 0, lluviaPas = 0, amigo = null;
   const objets = [], eclats = [], pops = [], ondes = [], fumees = [], ambiance = [];
   const heros = { y: 0, vy: 0, sauts: 0, chute: 0, ecrase: 1, tourne: 0, vrille: 0, charge: 0, auSol: true, img: imageSure(), imgs: [], taille: 1 };
 
   // Une surprise toutes les 30 à 40 s (bien plus souvent en test rapide)
   const SURPRISES = ["lluvia", "cofre", "amigo", "arcoiris", "etoile"];
-  const ECART_SURPRISE = TEST_RAPIDE ? Math.max(3500, DUREE_JEU / 6) : 33000;
+  const ECART_SURPRISE = MODE_PARTIE ? DUREE_JEU * (PARTIE_COURTE ? .32 : .2) : TEST_RAPIDE ? Math.max(3500, DUREE_JEU / 6) : 33000;
 
   function commencer(a) {
     A = a; P = pouvoir(a.n); nage = NAGEURS.includes(a.n); monde = MONDES[a.m];
@@ -132,8 +133,8 @@
     heros.imgs = (EVOLUTIONS[a.n] || []).map((src) => { if (!src) return null; return imageSure(src); });
     heros.y = nage ? H * .45 : SOL - rayon(); heros.vy = 0; heros.sauts = P.sauts;
     prochain = L * .9; derniereEtoile = 0;
-    ordreSurprises = SURPRISES.slice().sort(() => Math.random() - .5);
-    prochaineSurprise = Date.now() + ECART_SURPRISE * (TEST_RAPIDE ? 1 : .75);
+    ordreSurprises = SURPRISES.slice().sort(() => alea() - .5);
+    prochaineSurprise = Date.now() + ECART_SURPRISE * (TEST_RAPIDE || MODE_PARTIE ? 1 : .75);
     preparerAmbiance();
     const nom = a.es.charAt(0).toUpperCase() + a.es.slice(1);
     dire(`¡${nom}! ${nom} ${P.dit}. Toca la pantalla para ${nage ? "nadar" : "saltar"}.`);
@@ -170,11 +171,18 @@
 
   // ---- Ce qui arrive devant : obstacles, trésors, plateformes, surprises ----
   const hasard = (a, b) => a + Math.random() * (b - a);
+  // Le hasard du parcours : en mode partie, il vient de la graine (jamais deux parties pareilles à la suite)
+  const alea = (() => { if (!MODE_PARTIE) return Math.random; let a = (GRAINE * 2654435761) >>> 0; return () => { a = (a + 0x6D2B79F5) >>> 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; })();
+  const entre = (a, b) => a + alea() * (b - a);
   const arc = (x0, y0, n, dx, haut) => { for (let i = 0; i < n; i++) objets.push({ t: "item", x: x0 + i * dx, y: y0 - Math.sin(i / (n - 1) * Math.PI) * haut }); };
   function semer() {
-    const x = prochain, special = aSemer; aSemer = null;
+    if (portailPose) { prochain += L; return; } // après le portail : plus rien, le chemin est libre
+    const x = prochain, special = fileSemer.shift() || null;
     let fin = x;
-    if (special === "cofre") {
+    if (special === "portal") { // la vraie fin de la partie
+      objets.push({ t: "portail", x, w: 120 * U }); portailPose = true;
+      fin = x + 120 * U;
+    } else if (special === "cofre") {
       const w = 90 * U, h = 74 * U;
       objets.push({ t: "cofre", x, w, h, annonce: "¡Un cofre del tesoro!" });
       fin = x + w;
@@ -193,33 +201,33 @@
       }
     } else if (special === "etoile") {
       objets.push({ t: "etoile", x, y: nage ? H * .45 : SOL - 150 * U }); derniereEtoile = dist; fin = x + 60 * U;
-    } else if (Math.random() < .32) {
+    } else if (alea() < (MODE_PARTIE ? .45 : .32)) {
       fin = passageDuMonde(x);
     } else if (nage) {
-      const r = Math.random(), surface = H * .14;
+      const r = alea(), surface = H * .14;
       if (r < .38) { // corail qui monte du fond, avec des perles au-dessus
-        const h = hasard(.18, .34) * H, w = 54 * U;
+        const h = entre(.18, .34) * H, w = 54 * U;
         objets.push({ t: "obst", k: "corail", x, w, h });
         arc(x - 40 * U, SOL - h - 70 * U, 4, 45 * U, 40 * U); fin = x + w;
       } else if (r < .68) { // méduse rigolote qui flotte
-        const y = hasard(surface + 90 * U, SOL - 140 * U);
-        objets.push({ t: "meduse", x, y0: y, y, r: 26 * U, ph: Math.random() * 6 });
+        const y = entre(surface + 90 * U, SOL - 140 * U);
+        objets.push({ t: "meduse", x, y0: y, y, r: 26 * U, ph: alea() * 6 });
         const autre = y > H * .45 ? y - 130 * U : y + 130 * U;
         arc(x - 60 * U, autre, 4, 42 * U, 0); fin = x + 80 * U;
       } else { // vague de perles
-        const y0 = hasard(surface + 80 * U, SOL - 80 * U);
+        const y0 = entre(surface + 80 * U, SOL - 80 * U);
         for (let i = 0; i < 6; i++) objets.push({ t: "item", x: x + i * 42 * U, y: y0 + Math.sin(i * .9) * 50 * U });
         fin = x + 250 * U;
       }
     } else {
-      const r = Math.random();
+      const r = alea();
       const k = { selva: "tronco", polos: "hielo", gigantes: "roca" }[A.m];
       if (r < .36) { // un obstacle, et un arc de trésors pour le sauter
-        const h = hasard(40, 72) * U, w = hasard(46, 70) * U;
+        const h = entre(40, 72) * U, w = entre(46, 70) * U;
         objets.push({ t: "obst", k, x, w, h });
         arc(x - 50 * U, SOL - 70 * U, 5, 40 * U, 120 * U); fin = x + w;
       } else if (r < .62) { // une plateforme avec des trésors dessus
-        const w = hasard(160, 230) * U, y = SOL - hasard(140, 175) * U;
+        const w = entre(160, 230) * U, y = SOL - entre(140, 175) * U;
         objets.push({ t: "plat", x, w, y });
         for (let i = 0; i < 4; i++) objets.push({ t: "item", x: x + 25 * U + i * (w - 50 * U) / 3, y: y - 34 * U });
         fin = x + w;
@@ -234,13 +242,13 @@
     }
     // l'étoile de temps en temps (en plus de la surprise « étoile »)
     if (!special && dist - derniereEtoile > 5200 * U) {
-      objets.push({ t: "etoile", x: fin + 140 * U, y: nage ? hasard(H * .14 + 80 * U, SOL - 90 * U) : SOL - 150 * U }); derniereEtoile = dist;
+      objets.push({ t: "etoile", x: fin + 140 * U, y: nage ? entre(H * .14 + 80 * U, SOL - 90 * U) : SOL - 150 * U }); derniereEtoile = dist;
     }
-    prochain = fin + hasard(320, 470) * U * Math.max(1, vitesseBase() / (220 * U));
+    prochain = fin + entre(320, 470) * U * Math.max(1, vitesseBase() / (220 * U));
   }
   // Les passages propres à chaque monde
   function passageDuMonde(x) {
-    const premier = Math.random() < .5;
+    const premier = alea() < .5;
     if (nage) {
       if (premier) { // un courant de bulles qui fait remonter
         const w = 110 * U; objets.push({ t: "corriente", x, w });
@@ -255,8 +263,8 @@
     }
     if (A.m === "selva") { // des lianes chargées de fruits
       for (let i = 0; i < 3; i++) {
-        const lx = x + i * 150 * U, ly = SOL - hasard(150, 190) * U;
-        objets.push({ t: "liana", x: lx, y: ly, ph: Math.random() * 6 });
+        const lx = x + i * 150 * U, ly = SOL - entre(150, 190) * U;
+        objets.push({ t: "liana", x: lx, y: ly, ph: alea() * 6 });
         for (let k = 0; k < 3; k++) objets.push({ t: "item", x: lx + (k - 1) * 22 * U, y: ly + 16 * U + (k === 1 ? 12 * U : 0) });
       }
       return x + 330 * U;
@@ -280,11 +288,11 @@
     } else if (k === "amigo") {
       const memes = mesAnimaux(1).filter((n) => n !== A.n && NAGEURS.includes(n) === nage);
       const liste = memes.length ? memes : mesAnimaux(1).filter((n) => n !== A.n);
-      const a = animalN(liste[Math.floor(Math.random() * liste.length)] || (A.n === 6 ? 5 : 6));
+      const a = animalN(liste[Math.floor(alea() * liste.length)] || (A.n === 6 ? 5 : 6));
       const img = imageSure(imgAnimal(a.n)); const sprite = imageSure(spriteAnimal(a.n));
       amigo = { a, img, sprite, t: 10, x: -40 * U, y: heros.y, part: false };
       sonBien(); bulle("¡Un amigo te ayuda!", 2600, true); dire(`¡Mira! ¡${nomMaj(a)} viene a ayudarte!`);
-    } else aSemer = k; // apparaît devant, annoncé quand il arrive à l'écran
+    } else fileSemer.push(k); // apparaît devant, annoncé quand il arrive à l'écran
   }
 
   // ---- Petits événements ----
@@ -584,6 +592,19 @@
       g.fillStyle = "#FFF3D6"; g.beginPath(); g.ellipse(0, 0, 24 * U, 31 * U, 0, 0, 7); g.fill(); g.stroke();
       g.fillStyle = "#7CC46A"; [[-8, -12, 6], [9, -2, 7], [-6, 12, 5], [10, 16, 4]].forEach(([x, y, r]) => { g.beginPath(); g.arc(x * U, y * U, r * U, 0, 7); g.fill(); });
       g.restore();
+    } else if (o.t === "portail") { // un grand portail ovale, du haut de l'eau ou du ciel jusqu'au sol
+      const cx = sx + o.w / 2, haut = H * .16, cy = (haut + SOL) / 2, rx = o.w / 2, ry = (SOL - haut) / 2;
+      const coul = { mar: "#3FB8E8", selva: "#2E9E57", polos: "#7FD6E8", gigantes: "#F08A1C" }[A.m];
+      const gr = g.createRadialGradient(cx, cy, 4 * U, cx, cy, ry);
+      gr.addColorStop(0, "rgba(255,255,255,.95)"); gr.addColorStop(.5, coul + "AA"); gr.addColorStop(1, coul + "33");
+      g.fillStyle = gr; g.beginPath(); g.ellipse(cx, cy, rx, ry, 0, 0, 7); g.fill();
+      // tourbillon
+      g.strokeStyle = "rgba(255,255,255,.7)"; g.lineWidth = 4 * U;
+      for (let k = 0; k < 3; k++) { const a = t / 400 + k * 2.1; g.beginPath(); g.ellipse(cx, cy, rx * (.35 + k * .2), ry * (.35 + k * .2), 0, a, a + 2); g.stroke(); }
+      // le cadre arc-en-ciel
+      g.lineWidth = 7 * U;
+      ARC.forEach((c, i) => { g.strokeStyle = c; g.beginPath(); g.ellipse(cx, cy, rx + (i - 2.5) * 6 * U + 18 * U, ry + (i - 2.5) * 6 * U + 18 * U, 0, 0, 7); g.stroke(); });
+      if (!DOUX && Math.random() < .5) eclats.push({ x: cx + (Math.random() - .5) * rx * 2, y: cy + (Math.random() - .5) * ry * 2, vx: 0, vy: -1, t: .7, s: 6 * U, c: ARC[Math.floor(Math.random() * 6)] });
     } else if (o.t === "almeja") {
       const cx = sx + 26 * U, y = SOL - 8 * U, ouv = o.ouvert ? -.9 : Math.sin(t / 300) * .05 - .05;
       g.fillStyle = "#E8A6C9";
@@ -620,6 +641,7 @@
     else if (heros.charge > 0) g.rotate(heros.charge * .5); // il fonce, tête en avant
     const e = heros.ecrase; g.scale(1 / Math.sqrt(e), e);
     if (ceremonie > 0) { const p = 1 + Math.sin((1.3 - ceremonie) * 14) * .2 * ceremonie; g.scale(p, p); }
+    if (dansPortail < 1) { g.rotate((1 - dansPortail) * 6); g.scale(dansPortail, dansPortail); } // aspiré par le portail
     const anneau = superT > 0 ? "arc" : ANNEAUX[niveau];
     // l'animal détouré (ou l'image d'évolution, si elle existe) ; le rond seulement si le sprite n'est pas encore là
     let sprite = heros.sprite; for (let k = niveau; k > 0; k--) if (imagePrete(heros.imgs[k])) { sprite = heros.imgs[k]; break; }
@@ -693,10 +715,18 @@
   let avant = performance.now();
   function boucle(t) {
     const dt = Math.min(.04, (t - avant) / 1000); avant = t;
-    // surprises
-    if (Date.now() >= prochaineSurprise) {
+    // mode partie : la finale arrive vers 80 % du temps ; il évolue au moins une fois ; filet si le portail tarde
+    if (MODE_PARTIE && !fini) {
+      const ecoule = Date.now() - debut;
+      if (!finale && ecoule > DUREE_JEU * .8) lancerFinale();
+      if (niveau === 0 && ecoule > DUREE_JEU * .5) evoluer();
+      if (finale < 2 && ecoule > DUREE_JEU * 1.5) finirPartie();
+    }
+    if (finale === 2) dansPortail = Math.max(0, dansPortail - dt * 1.6);
+    // surprises (plus de surprise une fois la finale lancée)
+    if (!finale && Date.now() >= prochaineSurprise) {
       prochaineSurprise = Date.now() + ECART_SURPRISE * hasard(.9, 1.15);
-      if (!ordreSurprises.length) ordreSurprises = SURPRISES.slice().sort(() => Math.random() - .5);
+      if (!ordreSurprises.length) ordreSurprises = SURPRISES.slice().sort(() => alea() - .5);
       surprise(ordreSurprises.shift());
     }
     if (lluviaT > 0) { // la pluie de trésors
@@ -802,6 +832,8 @@
           if (!o.son) { o.son = true; bruit(3000, 1, .6, .25); pop(HX, heros.y - r - 14 * U, "¡Wiii!", "#FFFFFF"); }
           if (!DOUX && Math.random() < .5) eclats.push({ x: HX - r * .6, y: SOL - 2 * U, vx: -3, vy: -1.5, t: .5, s: 5 * U, c: Math.random() < .5 ? "#FFFFFF" : "#BFE3FA" });
         }
+      } else if (o.t === "portail" && !o.entre) {
+        if (cx + o.w * .5 < HX + r * .3) entrerPortail(o, cx); // il le traverse tout seul, quelle que soit la hauteur
       } else if (o.t === "corriente") {
         if (nage && HX > cx && HX < cx + o.w) {
           heros.vy = Math.max(heros.vy - 2600 * U * dt, -420 * U);
@@ -852,15 +884,47 @@
   }
 
   // ---- 3 minutes, « ¡Último minuto! » 30 s avant, puis la ballena ----
-  const minuteur = () => minuteurJeu({ barre: $("barre"), bandeau: $("ultimo"), annonce: "¡Último minuto, guardián!", surFin: terminer });
+  // En mode partie, pas de minuteur qui coupe : la barre se vide jusqu'au portail, et c'est le portail qui finit.
+  const minuteur = () => MODE_PARTIE ? barrePartie() : minuteurJeu({ barre: $("barre"), bandeau: $("ultimo"), annonce: "¡Último minuto, guardián!", surFin: terminer });
+  function barrePartie() {
+    const tic = setInterval(() => {
+      const k = finale === 2 ? 0 : Math.max(.04, 1 - (Date.now() - debut) / DUREE_JEU);
+      $("barre").style.transform = `scaleX(${k})`;
+      if (fini) clearInterval(tic);
+    }, 250);
+  }
+
+  // ---- La vraie fin d'une partie : le portail du monde ----
+  const DE_MONDE = { mar: "del mar", selva: "de la selva", polos: "de los polos", gigantes: "de los gigantes" };
+  function lancerFinale() {
+    finale = 1; lluviaT = 0;
+    // trois façons d'arriver au portail, selon la partie : pluie de trésors, pont arc-en-ciel, coffre juste devant
+    const v = ["lluvia", "arcoiris", "cofre"][GRAINE % 3];
+    if (v === "lluvia") { lluviaT = 4; lluviaPas = 0; } else fileSemer.push(v);
+    fileSemer.push("portal");
+    sonBien(); bulle(`¡El portal ${DE_MONDE[A.m]}!`, 3000, true); dire(`¡Mira! ¡El portal ${DE_MONDE[A.m]}!`);
+  }
+  function entrerPortail(o, cx) {
+    o.entre = true; finale = 2; dansPortail = 1;
+    flash = DOUX ? .3 : .9; if (!DOUX) secousse = 12; sonEvolution(); vibre([40, 40, 80]);
+    const mx = cx + o.w / 2, my = (H * .16 + SOL) / 2;
+    ARC.forEach((c) => jaillir(mx, my, c, 10, 1.8)); jaillir(HX, heros.y, "#FFFFFF", 16, 1.4);
+    ondes.push({ x: mx, y: my, r: 40 * U, t: 1, c: "#FFFFFF" });
+    pop(L / 2, H * .3, "¡Guardián!", "#F2B90F", 2);
+    setTimeout(finirPartie, 1700);
+  }
+  function finirPartie() {
+    if (fini) return; fini = true;
+    finPartie({ titre: `¡Guardián ${DE_MONDE[A.m]}!`, phrase: `${nomMaj(A)} ha recogido ${items} ${monde.item}.` });
+  }
   function terminer() {
     fini = true;
     const nom = nomMaj(A);
     finDePause($("fin"), "¡Guardián increíble!", `${nom} ha recogido ${items} ${monde.item} y ha llegado al nivel ${niveau + 1}.`);
   }
 
-  if (TEST_RAPIDE) window.guardianes = {
-    get heros() { return heros; }, get objets() { return objets; }, get items() { return items; }, get niveau() { return niveau; },
+  if (TEST_RAPIDE || MODE_PARTIE) window.guardianes = {
+    get heros() { return heros; }, get objets() { return objets; }, get items() { return items; }, get niveau() { return niveau; }, get finale() { return finale; },
     surprise, evoluer, get amigo() { return amigo; },
   };
 })();

@@ -21,10 +21,10 @@
 </main>
 <section class="ecran-fin" id="fin" hidden></section>
 
-<script src="commun.js?v=10"></script>
+<script src="commun.js?v=11"></script>
 <script src="animaux.js?v=12"></script>
 <script src="sync.js?v=7"></script>
-<script src="pause-commun.js?v=2"></script>
+<script src="pause-commun.js?v=4"></script>
 <script>
 (() => {
   const $ = (id) => document.getElementById(id);
@@ -32,8 +32,20 @@
   // Ses animaux sont coincés dans des prisons de leur monde (bulle d'eau, cocon de feuilles, glace, ambre) :
   // il les libère en tirant des bulles. Chaque animal libéré rejoint la rangée qui l'encourage sur l'herbe.
   const POOL = mesAnimaux();
-  let pile = [];
-  const prochainAnimal = () => { if (!pile.length) pile = melange(POOL.slice()); return animalN(pile.pop()); };
+  // Les animaux à libérer : un ordre mélangé toujours le même (graine fixe), et chaque partie reprend plus loin
+  // (GRAINE + 1 à chaque partie) → il voit défiler toute sa collection, jamais les mêmes deux parties de suite.
+  const hasard = (graine) => () => { graine = graine + 0x6D2B79F5 | 0; let t = Math.imul(graine ^ graine >>> 15, 1 | graine); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+  const ORDRE = (() => { const h = hasard(2026), o = POOL.slice(); for (let i = o.length - 1; i > 0; i--) { const j = Math.floor(h() * (i + 1)); [o[i], o[j]] = [o[j], o[i]]; } return o; })();
+  let rangAnimal = (GRAINE * 3) % ORDRE.length;
+  const VEDETTE = ANIMAL_IMPOSE && animalN(ANIMAL_IMPOSE) ? ANIMAL_IMPOSE : 0; // l'animal choisi par l'appli : la star de la fin
+  const prochainAnimal = () => {
+    for (let k = 0; k < ORDRE.length; k++) { const n = ORDRE[rangAnimal++ % ORDRE.length]; if (n !== VEDETTE || ORDRE.length < 2) return animalN(n); }
+    return animalN(ORDRE[0]);
+  };
+  // La partie (entre deux blocs de devoirs) : une surprise au milieu, et une fin qui change à chaque partie.
+  const FINALES = ["nubarron", "prision", "vague"], SURPRISES = ["minis", "lluvia", "magia"];
+  const FINALE = MODE_PARTIE ? FINALES[GRAINE % 3] : "nubarron";
+  const SURPRISE = SURPRISES[(GRAINE + 1) % 3];
   let ratees = 0;
   const IMGS = {};
   const charger = (n) => { if (!IMGS[n]) { IMGS[n] = imageSure(imgAnimal(n)); IMGS[n].addEventListener("error", () => ratees++); } }; // redemandée si elle rate
@@ -42,6 +54,7 @@
   const SPR = {};
   const chargerSpr = (n) => { if (!SPR[n]) SPR[n] = imageSure(spriteAnimal(n)); };
   POOL.forEach(charger); DORES.forEach(charger); POOL.forEach(chargerSpr); DORES.forEach(chargerSpr);
+  if (VEDETTE) { charger(VEDETTE); chargerSpr(VEDETTE); }
   const MARINS = [1, 2, 3, 4, 5, 6, 12, 13]; // sur l'herbe, ceux-là restent dans une petite bulle d'eau
 
   // ---- Chaque animal libéré aide pendant 7 s avec son pouvoir (les mêmes que dans Los guardianes) ----
@@ -63,20 +76,23 @@
   const debutJeu = performance.now();
   // Le gran Nubarrón arrive ~42 s avant la fin. Il ne fait rien à Dorian et éclate TOUJOURS avant la fin :
   // sa vie ne peut jamais dépasser une ligne qui descend jusqu'à zéro 6 s avant l'arrêt.
-  const BOSS_DEBUT = DUREE_JEU - (TEST_RAPIDE ? DUREE_JEU * .45 : Math.min(42000, DUREE_JEU * .3));
-  const BOSS_FIN = DUREE_JEU - (TEST_RAPIDE ? DUREE_JEU * .1 : 6000);
-  const PV_BOSS = TEST_RAPIDE ? 150 : 900;
+  // En partie : la fin commence à ~35 s (courte) ou ~110 s (longue), et se gagne toujours ~4 s avant la durée cible.
+  const BOSS_DEBUT = DUREE_JEU - (MODE_PARTIE ? DUREE_JEU * (PARTIE_COURTE ? .42 : .27) : TEST_RAPIDE ? DUREE_JEU * .45 : Math.min(42000, DUREE_JEU * .3));
+  const BOSS_FIN = DUREE_JEU - (MODE_PARTIE ? Math.min(4000, DUREE_JEU * .07) : TEST_RAPIDE ? DUREE_JEU * .1 : 6000);
+  const PV_BOSS = TEST_RAPIDE ? 150 : PARTIE_COURTE ? 450 : 900;
   // … et il ne peut pas tomber trop vite non plus : au moins ~25 s de combat, même s'il tire parfaitement.
-  const BOSS_MIN = TEST_RAPIDE ? (BOSS_FIN - BOSS_DEBUT) * .7 : 25000;
+  const BOSS_MIN = MODE_PARTIE ? (BOSS_FIN - BOSS_DEBUT) * .6 : TEST_RAPIDE ? (BOSS_FIN - BOSS_DEBUT) * .7 : 25000;
+  const MOMENT_SURPRISE = MODE_PARTIE ? DUREE_JEU * (PARTIE_COURTE ? .3 : .55) : Infinity;
   // Les Nubarroncitos : une vague de ~20 s vers 1 min 15 (puis toutes les ~100 s dans une longue partie).
-  const VAGUE_DUREE = TEST_RAPIDE ? DUREE_JEU * .15 : 20000;
+  const VAGUE_DUREE = MODE_PARTIE ? 15000 : TEST_RAPIDE ? DUREE_JEU * .15 : 20000;
   const VAGUES = [];
-  for (let v = TEST_RAPIDE ? DUREE_JEU * .2 : Math.min(75000, DUREE_JEU * .42); v + VAGUE_DUREE < BOSS_DEBUT - (TEST_RAPIDE ? 0 : 15000); v += TEST_RAPIDE ? 1e9 : 100000) VAGUES.push(v);
+  if (MODE_PARTIE) { if (!PARTIE_COURTE) VAGUES.push(DUREE_JEU * .25); } // la partie courte a sa surprise à la place
+  else for (let v = TEST_RAPIDE ? DUREE_JEU * .2 : Math.min(75000, DUREE_JEU * .42); v + VAGUE_DUREE < BOSS_DEBUT - (TEST_RAPIDE ? 0 : 15000); v += TEST_RAPIDE ? 1e9 : 100000) VAGUES.push(v);
   const PV_MINI = TEST_RAPIDE ? 12 : 25; // assez solides pour avoir le temps de faire leur bêtise
   const PERIODE_SPECIAL = TEST_RAPIDE ? Math.max(3000, DUREE_JEU / 6) : 10000; // un ballon spécial toutes les ~10 s
   const PERIODE_PORTES = TEST_RAPIDE ? Math.max(5, DUREE_JEU / 4000) : 22;      // les portes changent toutes les ~22 s
   // Une prison cède en ~8 s s'il vise bien, ~12 s au hasard (mesuré : 38 et 27 coups/s avec les portes), du début à la fin.
-  const PV = TEST_RAPIDE ? 60 : 320;
+  const PV = TEST_RAPIDE ? 60 : PARTIE_COURTE ? 140 : MODE_PARTIE ? 260 : 320; // partie courte : ~5 s par prison
 
   // ---- Toile ----
   const toile = $("toile"), g = toile.getContext("2d");
@@ -114,13 +130,14 @@
   const OPS = [["+", 2], ["+", 3], ["×", 2], ["×", 3]];
   let portes = [], sortantes = [], portesT = 0;
   function nouvellesPortes() {
+    if (porteMagique && portes.length && portes.every((p) => p.op[0] === "×" && p.op[1] >= 3) && portesT > 1) porteMagique = false; // une seule série magique
     sortantes = portes; sortantes.forEach((p) => (p.app = 1));
     portes = []; portesT = 0;
     const rare = Math.random() < .2 ? Math.floor(Math.random() * 4) : -1;
     [[.6, 1], [.4, -1]].forEach(([fy, sens], r) => {
       const ops = melange(OPS.slice()).slice(0, 2);
       const ph = Math.random() * 6, vit = sens * (.6 + Math.random() * .3); // les 2 portes d'une rangée bougent ensemble
-      ops.forEach((op, i) => portes.push({ op: r * 2 + i === rare ? ["×", 5] : op, base: i ? .7 : .3, x: L * (i ? .7 : .3), y: H * fy, w: 104 * U, h: 36 * U, ph, vit, joie: 0, popT: 0, app: 0, id: Math.random() }));
+      ops.forEach((op, i) => portes.push({ op: porteMagique ? ["×", r ? 3 : 5] : r * 2 + i === rare ? ["×", 5] : op, base: i ? .7 : .3, x: L * (i ? .7 : .3), y: H * fy, w: 104 * U, h: 36 * U, ph, vit, joie: 0, popT: 0, app: 0, id: Math.random() }));
     });
   }
   const valeur = (p, n) => p.op[0] === "×" ? n * p.op[1] : n + p.op[1];
@@ -148,18 +165,21 @@
 
   // ---- Bulles, ballons, prison, confettis ----
   let bulles = [], ballons = [], confettis = [], geante = null, libres = 0, tirT = 0;
+  let fiestaT = 0;
   let pouvoir = { type: null, t: 0 }, prochainSpecial = PERIODE_SPECIAL * .6, cycleSpecial = [], secousse = 0, fiesta = false;
   const eclats = new Eclats();
   const liberations = [];
   let coups = 0;
-  let aide = null, boss = null, bossFait = false, victoire = false;
+  let aide = null, boss = null, bossFait = false, victoire = false, surpriseFaite = false, porteMagique = false, finaleVague = null, finAnnoncee = false;
   let minis = [], etoiles = [], vague = -1, vagueFin = 0, prochainMini = 0, minisEclates = 0;
   const cible = () => (boss && !boss.vaincu ? boss : geante);
 
   function nouvelleGeante() {
     if (fini || boss || bossFait) return;
-    if (performance.now() - debutJeu >= BOSS_DEBUT) { lancerBoss(); return; }
-    const a = prochainAnimal(), r = 64 * U;
+    if (performance.now() - debutJeu >= BOSS_DEBUT) { lancerFinale(); return; }
+    creerPrison(prochainAnimal(), 64 * U);
+  }
+  function creerPrison(a, r, { trio = null, finale = false } = {}) {
     // fissures (glace, ambre) préparées d'avance : elles apparaissent une à une
     const fissures = Array.from({ length: 7 }, (_, i) => {
       const an = i / 7 * 6.28 + Math.random() * .6, pts = [];
@@ -167,7 +187,9 @@
       return pts;
     });
     const feuilles = Array.from({ length: 14 }, (_, i) => ({ an: i / 14 * 6.28 + Math.random() * .2, seuil: (i * 5 % 14 + 1) / 15, c: ["#2E9E57", "#3E9B4F", "#56B868", "#237A43"][i % 4] }));
-    geante = { a, x: L / 2, y: -90 * U, cibleY: H * .15, r, pv: PV, pvMax: PV, tremble: 0, vx: 22 * U * (Math.random() < .5 ? 1 : -1), fissures, feuilles, etape: 0, age: 0 };
+    const pv = finale ? Math.round(PV_BOSS * .8) : PV;
+    geante = { a, x: L / 2, y: -(r + 30 * U), cibleY: finale ? H * .19 : H * .15, r, pv, pvMax: pv, tremble: 0, vx: 22 * U * (Math.random() < .5 ? 1 : -1), fissures, feuilles, etape: 0, age: 0,
+      trio, finale, debut: performance.now() - debutJeu };
   }
   function lancerBallon(type = "n") {
     const gauche = Math.random() < .5, special = type !== "n";
@@ -195,6 +217,14 @@
     eclats.jaillir(G.x, G.y, COUL_MONDE[a.m], 18, 1.3, 1.3); eclats.jaillir(G.x, G.y, "#fff", 10, 1.1);
     secousse = .4; sonEclate(); vibrer([30, 40, 70]);
     const nom = nomMaj(a);
+    if (G.finale) { // la gran prisión : les trois sortent ensemble
+      G.trio.forEach((n, k) => { libres++; volants.push({ a: animalN(n), x: G.x + (k ? 1 : -1) * G.r * .5, y: G.y, t: -.25 * (k + 1), depart: Math.random() * 6.28 }); });
+      compteurPop($("total"), libres, $("nb")); secousse = 1; setTimeout(sonEclate, 300); vibrer([60, 50, 60, 50, 150]);
+      confetti(G.x, G.y, 120, ["#E0453F", "#F2B90F", "#2E9E57", "#3FB8E8", "#B05BE0", "#fff"]);
+      bulle("¡La gran prisión está abierta!", 3000, true); dire(`¡Bravo! ¡${nom} y sus amigos son libres!`);
+      volants.push({ a, x: G.x, y: G.y, t: 0, depart: Math.random() * 6.28 });
+      acclamer(); geante = null; gagner("¡La gran prisión está abierta!", `${nom} y sus amigos son libres.`); return;
+    }
     bulle(`¡${nom} es libre!`, 2400, true); dire(`¡${nom} es libre!`);
     volants.push({ a, x: G.x, y: G.y, t: 0, depart: Math.random() * 6.28 });
     acclamer();
@@ -297,7 +327,7 @@
   function lancerBoss() {
     bossFait = true;
     const siens = DORES.filter((n) => POOL.includes(n)), liste = siens.length ? siens : DORES;
-    const a = animalN(liste[Math.floor(Math.random() * liste.length)]);
+    const a = animalN(VEDETTE || liste[Math.floor(Math.random() * liste.length)]);
     boss = { a, x: L / 2, y: -170 * U, cibleY: H * .18, r: 92 * U, pv: PV_BOSS, pvMax: PV_BOSS, debut: performance.now() - debutJeu,
       tremble: 0, phase: 0, rugit: 1.5, sens: 1, reprotT: 3, esquive: 0, esquiveT: 4, eclair: 0, etape: 0, vaincu: false };
     bouclier(4);
@@ -314,19 +344,52 @@
     bulle("¡Has vencido al Nubarrón!", 3200, true); dire(`¡Has vencido al gran Nubarrón! ¡${nomMaj(B.a)} es libre!`);
     volants.push({ a: B.a, x: B.x, y: B.y, t: 0, depart: Math.random() * 6.28 });
     boss = null; fiesta = true; acclamer();
+    gagner("¡Has vencido al Nubarrón!", `¡${nomMaj(B.a)} es libre!`);
   }
+  // ---- La fin de la partie : toujours une victoire. En partie, on prévient la séance après la petite fête. ----
+  function gagner(titre, phrase) {
+    victoire = true; fiesta = true;
+    if (!MODE_PARTIE || finAnnoncee) return;
+    finAnnoncee = true;
+    setTimeout(() => { fini = true; finPartie({ titre, phrase: phrase + " " + (libres === 1 ? "Has liberado a un animal." : `Has liberado a ${libres} animales.`) }); }, 2600);
+  }
+  function lancerFinale() {
+    bossFait = true;
+    if (FINALE === "nubarron") return lancerBoss();
+    if (FINALE === "prision") {
+      const star = VEDETTE ? animalN(VEDETTE) : prochainAnimal(), amis = [prochainAnimal().n, prochainAnimal().n];
+      creerPrison(star, 96 * U, { trio: amis, finale: true });
+      bulle("¡La gran prisión!", 2600, true); dire(`¡La gran prisión! ¡Libera ${star.es.startsWith("el ") ? "al " + star.es.slice(3) : "a " + star.es} y a sus amigos!`);
+      sonRugit(); secousse = .5; return;
+    }
+    // la dernière vague : 5 Nubarroncitos qui restent à l'écran jusqu'à ce qu'il les éclate
+    finaleVague = { total: 5, lances: 0, prochain: 0, debut: performance.now() - debutJeu, eclatesAvant: minisEclates };
+    vagueFin = Infinity; minis.forEach((m) => (m.etat = "part")); // ceux de la surprise s'en vont
+    bulle("¡La última ola!", 2400, true); dire("¡La última ola de Nubarroncitos! ¡Explótalos todos!"); sonRugit(); secousse = .5;
+  }
+  // La surprise du milieu de partie (une seule) : des Nubarroncitos, une pluie de ballons, ou des portes magiques.
+  function lancerSurprise() {
+    surpriseFaite = true;
+    if (SURPRISE === "minis") { vagueFin = performance.now() - debutJeu + 9000; prochainMini = 0; bulle("¡Nubarroncitos!", 2000, true); dire("¡Oh, no! ¡Nubarroncitos! ¡Explótalos!"); }
+    else if (SURPRISE === "lluvia") { lancerBallon("gros"); for (let k = 0; k < 5; k++) setTimeout(() => lancerBallon("n"), k * 250); fiestaT = 7; bulle("¡Lluvia de globos!", 2000, true); dire("¡Lluvia de globos!"); }
+    else { porteMagique = true; nouvellesPortes(); bulle("¡Puertas mágicas!", 2000, true); dire("¡Puertas mágicas!"); }
+    sonSpecial();
+  }
+  // La garantie des fins : la vie ne reste jamais au-dessus d'une ligne qui finit à zéro avant la fin (il gagne toujours),
+  // ni en dessous d'une ligne trop rapide (le combat dure au moins BOSS_MIN).
+  const garantie = (B, ecoule) => [B.pvMax * Math.max(0, (BOSS_FIN - ecoule) / (BOSS_FIN - B.debut)), B.pvMax * Math.max(0, 1 - (ecoule - B.debut) / BOSS_MIN)];
   function majBoss(dt, t, ecoule) {
     const B = boss;
     B.y += (B.cibleY - B.y) * Math.min(1, dt * 2);
     // la garantie : il ne peut jamais rester au-dessus de cette ligne
-    const lim = B.pvMax * Math.max(0, (BOSS_FIN - ecoule) / (BOSS_FIN - B.debut));
+    const [lim, plancher] = garantie(B, ecoule);
     if (B.pv > lim) B.pv = lim;
-    const plancher = B.pvMax * Math.max(0, 1 - (ecoule - B.debut) / BOSS_MIN);
     if (B.pv < plancher) { // il est en avance : le Nubarrón encaisse, et se reprotège de temps en temps
       B.pv = plancher;
       B.reprotT -= dt;
       if (B.reprotT <= 0 && B.bouclier.every((s) => s.pv <= 0)) { B.reprotT = 5; bouclier(3 + B.phase); B.rugit = .8; sonRugit(); bulle("¡Grrr! ¡Se protege otra vez!", 1800, true); }
     }
+    if (B.pv > lim) B.pv = lim; // la garantie passe toujours en dernier : il gagne toujours
     const f = Math.max(0, B.pv) / B.pvMax, phase = f < .34 ? 2 : f < .67 ? 1 : 0;
     if (phase > B.phase) { B.phase = phase; B.rugit = 1.3; sonRugit(); secousse = .6; bouclier(phase === 1 ? 5 : 6); bulle(phase === 1 ? "¡Grrr! ¡Se protege!" : "¡Grrr! ¡Está furioso!", 2000, true); }
     B.esquiveT -= dt; if (B.phase > 0 && B.esquiveT <= 0) { B.esquiveT = 3.5 + Math.random() * 2; B.esquive = .5; B.sens *= -1; pop(B.x, B.y - B.r, "¡Fiuu!", "#fff", 20); }
@@ -383,11 +446,11 @@
       g.restore();
     }
   }
-  function dessinerVieBoss(B) {
+  function dessinerVieBoss(B, nom = "GRAN NUBARRÓN", couleur = "#B05BE0") {
     const w = L * .56, x = (L - w) / 2, y = 10 * U, h = 13 * U;
     g.fillStyle = "rgba(30,42,68,.55)"; rect(x - 3 * U, y - 3 * U, w + 6 * U, h + 6 * U, 9 * U); g.fill();
-    g.fillStyle = "#B05BE0"; rect(x, y, w * Math.max(0, B.pv) / B.pvMax, h, 7 * U); g.fill();
-    g.font = `900 ${11 * U}px Lexend, system-ui`; g.textAlign = "center"; g.textBaseline = "middle"; g.fillStyle = "#fff"; g.fillText("GRAN NUBARRÓN", L / 2, y + h / 2 + .5);
+    g.fillStyle = couleur; rect(x, y, w * Math.max(0, B.pv) / B.pvMax, h, 7 * U); g.fill();
+    g.font = `900 ${11 * U}px Lexend, system-ui`; g.textAlign = "center"; g.textBaseline = "middle"; g.fillStyle = "#fff"; g.fillText(nom, L / 2, y + h / 2 + .5);
   }
 
   // ---- Les Nubarroncitos : ils font des bêtises, ne touchent jamais Dorian, et éclatent en « ¡Puf! » ----
@@ -416,7 +479,18 @@
       bulle("¡Llegan los Nubarroncitos!", 2400, true); dire("¡Oh, no! ¡Los Nubarroncitos hacen travesuras! ¡Explótalos!");
       sonRugit(); secousse = .3;
     }
-    if (ecoule < vagueFin && ecoule >= prochainMini && minis.length < 3 && !fini) {
+    if (finaleVague) { // la dernière vague : 5 Nubarroncitos, un par un
+      const F = finaleVague;
+      if (F.lances < F.total && ecoule >= F.prochain) { F.prochain = ecoule + 900; F.lances++; lancerMini(F.lances % 2 ? "voleur" : "soplón"); minis[minis.length - 1].final = true; }
+      // la garantie : à l'approche de la fin, la rangée les éclate un par un (il gagne toujours)
+      if (ecoule > BOSS_FIN - 1500 && minis.length && !(F.pouf > ecoule)) { F.pouf = ecoule + 250; eclaterMini(minis.length - 1); }
+      if (F.lances === F.total && !minis.length && !victoire) {
+        for (let k = 0; k < 6; k++) setTimeout(() => { confetti(L * (.15 + Math.random() * .7), H * (.15 + Math.random() * .35), 40, ARC.concat("#fff")); sonGlobo(); }, k * 220);
+        bulle("¡Adiós, Nubarroncitos!", 3000, true); dire("¡Adiós, Nubarroncitos! ¡Bravo!"); sonSpecial(); vibrer([40, 40, 120]); acclamer();
+        gagner("¡Adiós, Nubarroncitos!", "¡Los has explotado todos!");
+      }
+    }
+    if (ecoule < vagueFin && !finaleVague && ecoule >= prochainMini && minis.length < 3 && !fini) {
       prochainMini = ecoule + (TEST_RAPIDE ? 1200 : 3200);
       const types = ["voleur", "soplón"]; if (geante && !minis.some((m) => m.type === "pegajoso")) types.push("pegajoso", "pegajoso");
       lancerMini(types[Math.floor(Math.random() * types.length)]);
@@ -424,20 +498,23 @@
     const fin = ecoule >= vagueFin;
     for (let i = minis.length - 1; i >= 0; i--) {
       const m = minis[i]; m.t += dt; m.tremble = Math.max(0, m.tremble - dt * 5);
-      if (fin && m.etat !== "part") { m.etat = "part"; pop(m.x, m.y - 20 * U, "¡Jijí!", "#fff", 18); }
+      if (fin && !m.final && m.etat !== "part") { m.etat = "part"; pop(m.x, m.y - 20 * U, "¡Jijí!", "#fff", 18); }
       if (m.etat === "part") { m.y -= 160 * U * dt; if (m.y < -50 * U) { minis.splice(i, 1); continue; } }
       else if (m.type === "voleur") {
         m.x += m.vx * dt; m.y += Math.sin(m.t * 2 + m.ph) * 30 * U * dt;
-        if (m.x < -60 * U || m.x > L + 60 * U) { minis.splice(i, 1); continue; } // il s'en va avec son ballon, en riant
+        if (m.final) { if (m.x < 30 * U && m.t > 1) m.vx = Math.abs(m.vx); if (m.x > L - 30 * U && m.t > 1) m.vx = -Math.abs(m.vx); } // la dernière vague ne s'enfuit pas
+        else if (m.x < -60 * U || m.x > L + 60 * U) { minis.splice(i, 1); continue; } // il s'en va avec son ballon, en riant
       } else if (m.type === "pegajoso") {
         if (!geante) { m.etat = "part"; continue; }
         const tx = geante.x, ty = geante.y + geante.r * .78;
         if (m.etat === "va") { const d = Math.hypot(tx - m.x, ty - m.y), v = 150 * U * dt; if (d < v + 2) { m.etat = "colle"; pop(m.x, m.y + 25 * U, "¡Pegado!", "#fff", 18); } else { m.x += (tx - m.x) / d * v; m.y += (ty - m.y) / d * v; } }
         else { m.x = tx; m.y = ty; }
+      } else if (m.etat === "rode") { // un soplón de la dernière vague, qui a soufflé : il se promène en haut
+        m.x += Math.sin(m.t * .9 + m.ph) * 90 * U * dt; m.y += (H * .3 + Math.sin(m.t * 1.7) * H * .08 - m.y) * Math.min(1, dt * 2);
       } else { // soplón
         const tx = L / 2, ty = (portes[0]?.y ?? H * .6) + 8 * U;
         if (m.etat === "va") { const d = Math.hypot(tx - m.x, ty - m.y), v = 110 * U * dt; if (d < v + 2) { m.etat = "souffle"; m.t = 0; } else { m.x += (tx - m.x) / d * v; m.y += (ty - m.y) / d * v; } }
-        else if (m.etat === "souffle" && m.t > 2.2) { m.etat = "part"; nouvellesPortes(); pop(m.x, m.y - 26 * U, "¡Fuuu!", "#fff", 24); bruitFiltre(500, .5, .6, .8); }
+        else if (m.etat === "souffle" && m.t > 2.2) { m.etat = m.final ? "rode" : "part"; nouvellesPortes(); pop(m.x, m.y - 26 * U, "¡Fuuu!", "#fff", 24); bruitFiltre(500, .5, .6, .8); }
       }
       dessinerMini(m, t);
     }
@@ -485,7 +562,8 @@
     g.save(); g.translate(G.x, G.y); g.scale(k, 1 / k);
     // l'animal en entier, qui flotte dans sa prison (sur la couleur de son monde)
     g.fillStyle = MILIEUX[m].fond; g.globalAlpha = .7; g.beginPath(); g.arc(0, 0, r * .9, 0, 7); g.fill(); g.globalAlpha = 1;
-    animal(G.a.n, 0, Math.sin(t / 500) * 3 * U, r * 1.45, { vers: G.vx > 0 ? 1 : -1, rotation: Math.sin(t / 700) * .08 });
+    if (G.trio) G.trio.forEach((n, k) => animal(n, (k ? 1 : -1) * r * .48, r * .22 + Math.sin(t / 450 + k) * 3 * U, r * .8, { vers: k ? -1 : 1 }));
+    animal(G.a.n, 0, Math.sin(t / 500) * 3 * U - (G.trio ? r * .12 : 0), r * (G.trio ? 1.1 : 1.45), { vers: G.vx > 0 ? 1 : -1, rotation: Math.sin(t / 700) * .08 });
     if (m === "mar") { // une bulle d'eau, avec deux petits poissons qui tournent autour
       const bg = g.createRadialGradient(-r * .3, -r * .3, r * .1, 0, 0, r);
       bg.addColorStop(0, "rgba(255,255,255,.5)"); bg.addColorStop(.6, "rgba(150,210,255,.3)"); bg.addColorStop(1, `rgba(60,150,230,${.6 - d * .3})`);
@@ -553,7 +631,10 @@
   function boucle(t) {
     const dt = Math.min(.04, (t - avant) / 1000); avant = t;
     const ecoule = t - debutJeu, prog = Math.min(1, ecoule / DUREE_JEU);
-    if (!bossFait && ecoule >= BOSS_DEBUT && geante) liberer(); // la dernière prison s'ouvre : place au Nubarrón
+    if (!bossFait && ecoule >= BOSS_DEBUT && geante) liberer(); // la dernière prison s'ouvre : place à la fin
+    if (!surpriseFaite && ecoule >= MOMENT_SURPRISE && !bossFait) lancerSurprise();
+    fiestaT = Math.max(0, fiestaT - dt);
+    if (geante && geante.finale) { const [lim, plancher] = garantie(geante, ecoule); if (geante.pv < plancher) geante.pv = plancher; if (geante.pv > lim) geante.pv = lim; if (geante.pv <= 0) liberer(); }
     canon.x += (canon.cible - canon.x) * Math.min(1, dt * 14);
     pouvoir.t = Math.max(0, pouvoir.t - dt);
     const mode = pouvoir.t > 0 ? pouvoir.type : null;
@@ -568,7 +649,7 @@
     canon.recul = Math.max(0, canon.recul - dt * 8);
     // ballons : de plus en plus nombreux, une fiesta à la fin
     const normaux = ballons.filter((b) => b.type === "n").length;
-    if (Math.random() < dt * (.45 + .45 * prog) * (fiesta ? 2.6 : boss ? .5 : 1) && normaux < (fiesta ? 8 : 4)) lancerBallon("n");
+    if (Math.random() < dt * (.45 + .45 * prog) * (fiesta || fiestaT ? 2.6 : boss ? .5 : 1) && normaux < (fiesta || fiestaT ? 8 : 4)) lancerBallon("n");
     if (ecoule > prochainSpecial) {
       prochainSpecial = ecoule + PERIODE_SPECIAL;
       if (!cycleSpecial.length) cycleSpecial = melange(["or", "arco", "gros"]);
@@ -774,6 +855,8 @@
     g.fillStyle = "#1E2A44"; for (const dx of [-20, 20]) { g.beginPath(); g.arc(dx * U, 6 * U, 9 * U, 0, 7); g.fill(); }
     g.restore();
     if (boss && !boss.vaincu) dessinerVieBoss(boss);
+    if (geante && geante.finale) dessinerVieBoss(geante, "GRAN PRISIÓN", "#3FB8E8");
+    if (finaleVague && !victoire) dessinerVieBoss({ pv: finaleVague.total - minisEclates + finaleVague.eclatesAvant, pvMax: finaleVague.total }, "NUBARRONCITOS", "#7D8BA8");
     if (!posé && !fini) { // petite main qui montre le geste au début
       const hx = L / 2 + Math.sin(t / 500) * 60 * U, hy = CY + 8 * U;
       g.fillStyle = "rgba(255,255,255,.9)"; g.beginPath(); g.arc(hx, hy, 14 * U, 0, 7); g.fill(); g.strokeStyle = "#1E2A44"; g.lineWidth = 2.5 * U; g.stroke();
@@ -783,12 +866,15 @@
   }
   requestAnimationFrame(boucle);
   bulle("Mueve el cañón con el dedo", 3000);
-  dire("¡Cañón de burbujas! Mueve el cañón con el dedo. Pasa por las puertas mágicas y libera a tus animales.");
+  dire(MODE_PARTIE ? "¡Libera a tus animales!" : "¡Cañón de burbujas! Mueve el cañón con el dedo. Pasa por las puertas mágicas y libera a tus animales.");
 
   // ---- Minuteur : 3 min, « ¡Último minuto! » 30 s avant, puis la ballena ----
-  minuteurJeu({ barre: $("barre"), bandeau: $("ultimo"), annonce: "¡Último minuto! ¡Vamos, todos juntos!",
+  // En partie, la vraie fin (gagner) arrive avant : le minuteur n'est qu'un filet, 6 s plus tard.
+  minuteurJeu({ barre: $("barre"), bandeau: $("ultimo"), annonce: "¡Último minuto! ¡Vamos, todos juntos!", duree: DUREE_JEU + (MODE_PARTIE ? 6000 : 0),
     surFin: () => { fini = true; finDePause($("fin"), "¡Qué buen rescate!", (libres === 1 ? "Has liberado a un animal" : `Has liberado a ${libres} animales`) + (victoire ? " y has vencido al gran Nubarrón." : ".")); } });
-  if (TEST_RAPIDE) window.burbujas = {
+  if (TEST_RAPIDE || MODE_PARTIE) window.burbujas = {
+    finale: FINALE, surprise: SURPRISE, ordre: ORDRE, get victoire2() { return victoire; }, get finaleVague() { return finaleVague && minis.length; },
+    get gpv() { return geante ? Math.round(geante.pv) + "/" + geante.pvMax + (geante.finale ? " finale" : "") : null; },
     get libres() { return libres; }, get bulles() { return bulles.length; }, get geante() { return geante && geante.pv; },
     get fans() { return fans.map((f) => f.n).join(","); }, get liberations() { return liberations; }, get ballons() { return ballons.map((b) => b.type); },
     get portes() { return portes.map((p) => p.op.join("")); }, get pouvoir() { return pouvoir.t > 0 ? pouvoir.type : null; },
