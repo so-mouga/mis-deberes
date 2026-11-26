@@ -15,7 +15,7 @@
   html,body{height:100%;overflow:hidden;overscroll-behavior:none}
   body{background:var(--noche);background-image:none;color:var(--texto)}
   /* Le bas de l'écran reste dégagé : sur certains Android (appli installée, barre de navigation par-dessus), le bouton était coupé. */
-  .ecran{height:100dvh;min-height:0;overflow:hidden;gap:12px;padding-top:max(12px,env(safe-area-inset-top));padding-bottom:max(32px,calc(env(safe-area-inset-bottom) + 20px))}
+  .ecran{height:var(--haut,100dvh);min-height:0;overflow:hidden;gap:12px;padding-top:max(12px,env(safe-area-inset-top));padding-bottom:max(24px,calc(env(safe-area-inset-bottom) + 16px))}
   button:focus-visible,a:focus-visible{outline-color:var(--oro)}
 
   .barre{display:flex;align-items:center;gap:12px;min-height:48px}
@@ -109,6 +109,16 @@
   .noches .lune{width:90px;height:90px;color:var(--oro)}
   .noches h2{font-size:34px;font-weight:800;line-height:1.2}
 </style>
+<script>
+  // La hauteur réellement visible (sans la barre de navigation d'Android) : 100dvh se trompe sur certains téléphones.
+  (function () {
+    const maj = () => {
+      const h = window.visualViewport ? visualViewport.height : innerHeight;
+      if (h > 300) document.documentElement.style.setProperty("--haut", h + "px"); // sinon (page cachée…) on garde 100dvh
+    };
+    maj(); addEventListener("resize", maj); window.visualViewport && visualViewport.addEventListener("resize", maj);
+  })();
+</script>
 </head>
 <body>
 <main class="ecran">
