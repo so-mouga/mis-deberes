@@ -24,6 +24,14 @@ function consigne(texte, voix) {
 }
 $("redire").addEventListener("click", () => redire());
 
+// La consigne complète au premier coup ; ensuite, seulement ce qui change (le mot, le nombre…).
+// Elle reste affichée, et son haut-parleur la redit toujours en entier.
+function consigneSuite(texte, toutDire, seulement, premiere) {
+  if (premiere) return consigne(texte, toutDire);
+  $("texte").textContent = texte; redire = toutDire;
+  return seulement();
+}
+
 function vider() { scene.innerHTML = ""; scene.classList.remove("entre"); void scene.offsetWidth; scene.classList.add("entre"); }
 function bouton(texte, classe = "") { const b = document.createElement("button"); b.className = "gros " + classe; b.textContent = texte; return b; }
 const clic = (el) => new Promise((ok) => el.addEventListener("click", ok, { once: true }));
@@ -131,7 +139,7 @@ function distracteurs(cible, items, proches) {
 }
 async function toca(e) {
   let simplifier = false;
-  for (const cible of melange(e.cibles || e.items).slice(0, e.n || 4)) {
+  for (const [rang, cible] of melange(e.cibles || e.items).slice(0, e.n || 4).entries()) {
     vider();
     const grille = document.createElement("div"); grille.className = "grille";
     let options = melange([cible, ...distracteurs(cible, e.items, e.proches)]);
@@ -142,7 +150,8 @@ async function toca(e) {
     });
     scene.append(grille);
     const g = garde(cartes);
-    await g.ouvrir(consigne(e.consigne, () => direSuite([[e.consigne + ".", "es-ES"], [cible.voz, LANGUE, .8]])));
+    await g.ouvrir(consigneSuite(e.consigne, () => direSuite([[e.consigne + ".", "es-ES"], [cible.voz, LANGUE, .8]]),
+      () => direSuite([[cible.voz, LANGUE, .8]]), rang === 0));
     const bonne = cartes.find((c) => c.dataset.voz === cible.voz);
     if (!demoFaite) { demoFaite = true; await demo(bonne); }
     let erreurs = 0, finie = false;
@@ -247,26 +256,44 @@ async function vrai(e) {
 }
 
 // ---------- Letras que faltan ----------
+// Lettres manquantes, du palier 1 (une lettre) au palier 3 (le mot entier).
+// Les mots composés passent à la ligne entre les mots ou après un trait d'union, jamais au milieu.
+const LETTRES_INTRUS = "aeiourstnlcdmpv";
 async function letras(e) {
+  let rangL = 0;
   for (const m of e.mots) {
     vider();
     const img = cromo(m.item, { nom: false }); img.classList.add("petit");
+    if (/[ -]/.test(m.trous)) img.classList.add("mini"); // mot composé (sur 2 lignes) : dessin plus petit pour tout faire tenir
     const rangee = document.createElement("div"); rangee.className = "cases";
+    const groupes = m.trous.match(/[^ -]+-?|-/g) || [];
+    if (Math.max(...groupes.map((x) => x.length)) > 7) rangee.classList.add("serre");
     const trous = [];
-    [...m.trous].forEach((ch, i) => {
-      const s = document.createElement("span");
-      if (ch === " ") s.className = "l espace";
-      else if (ch === "_") { s.className = "l trou"; s.dataset.lettre = m.mot[i]; trous.push(s); }
-      else { s.className = "l"; s.textContent = ch; }
-      rangee.append(s);
-    });
+    let i = 0;
+    for (const gr of groupes) {
+      while (m.trous[i] === " ") i++;
+      const bloc = document.createElement("span"); bloc.className = "bloc";
+      for (const ch of gr) {
+        const s = document.createElement("span");
+        if (ch === "_") { s.className = "l trou"; s.dataset.lettre = m.mot[i]; trous.push(s); }
+        else { s.className = "l"; s.textContent = ch; }
+        bloc.append(s); i++;
+      }
+      rangee.append(bloc);
+    }
     const manquantes = trous.map((t) => t.dataset.lettre);
-    const intrus = melange([..."aeiou"].filter((l) => !manquantes.includes(l))).slice(0, 2);
+    // Deux fausses lettres, voyelles ou consonnes : jamais une lettre du mot.
+    const intrus = melange([...LETTRES_INTRUS].filter((l) => !m.mot.includes(l))).slice(0, 2);
     const tuiles = document.createElement("div"); tuiles.className = "tuiles";
     melange([...manquantes, ...intrus]).forEach((l) => { const b = document.createElement("button"); b.className = "tuile"; b.textContent = l; tuiles.append(b); });
-    scene.append(img, rangee, tuiles);
+    if (e.palier) {
+      const p = document.createElement("div"); p.className = "palier"; p.setAttribute("aria-hidden", "true");
+      p.innerHTML = [1, 2, 3].map((n) => `<i${n <= e.palier ? ' class="on"' : ""}></i>`).join("");
+      scene.append(img, p, rangee, tuiles);
+    } else scene.append(img, rangee, tuiles);
     const g = garde([tuiles]);
-    g.ouvrir(consigne(e.consigne, () => direSuite([[e.consigne + ".", "es-ES"], [m.mot, LANGUE, .7]])));
+    g.ouvrir(consigneSuite(e.consigne, () => direSuite([[e.consigne + ".", "es-ES"], [m.voz || m.mot, LANGUE, .7]]),
+      () => direSuite([[m.voz || m.mot, LANGUE, .7]]), rangL++ === 0));
     let n = 0; trous[0].classList.add("suivant");
     await new Promise((fini) => tuiles.querySelectorAll(".tuile").forEach((b) => b.addEventListener("click", async () => {
       if (b.classList.contains("partie") || !g.peut() || n >= trous.length) return;
@@ -276,15 +303,14 @@ async function letras(e) {
         t.textContent = b.textContent; t.classList.remove("suivant"); t.classList.add("rempli");
         n++;
         if (n < trous.length) trous[n].classList.add("suivant");
-        else { sonBien(); await parle(m.mot); await attendre(500); fini(); }
+        else { sonBien(); await parle(m.voz || m.mot); await attendre(500); fini(); }
       } else {
         b.classList.add("non"); rate(e, "mot", m.mot); setTimeout(() => b.classList.remove("non"), 900);
-        g.reponse(false, parle(m.mot, .6));
+        g.reponse(false, parle(m.voz || m.mot, .6));
       }
     })));
   }
 }
-
 // ---------- Con un mayor ----------
 // Pensée pour l'adulte qui en sait le moins : la grand-mère de Dorian ne parle ni français ni anglais.
 // La voix lit la question ; l'adulte écoute la réponse au haut-parleur et compare, à l'oreille, avec ce que dit Dorian.
@@ -315,7 +341,7 @@ async function papa(e) {
     vider();
     const carte = document.createElement("div"); carte.className = "carte-parent";
     carte.innerHTML = `<p class="pour-mayor">Para el adulto: pregunta, toca « Escuchar » y compara.</p><p class="q">${item.q}</p>${item.item ? cromo(item.item, { nom: false }).outerHTML : ""}
-      <div class="reponse"><span>Respuesta<br><b>${item.r}</b></span><button class="ecoute" aria-label="Escuchar la respuesta">${ICONES.hautparleur}<span>Escuchar</span></button></div>`;
+      <div class="reponse${item.r.length > 28 ? " long" : ""}"><span>Respuesta<br><b>${item.r}</b></span><button class="ecoute" aria-label="Escuchar la respuesta">${ICONES.hautparleur}<span>Escuchar</span></button></div>`;
     const boutons = document.createElement("div"); boutons.className = "boutons";
     const oui = bouton("Sí, lo ha dicho", "vert"); oui.insertAdjacentHTML("afterbegin", ICONES.ok);
     const encore = bouton("Otra vez", "clair"); encore.insertAdjacentHTML("afterbegin", ICONES.encore);
@@ -337,26 +363,49 @@ async function papa(e) {
 
 // ---------- En tu cuaderno ----------
 async function cuaderno(e) {
+  // « tirage » : la dictée pioche quelques mots au hasard, différents à chaque séance.
+  const items = e.tirage ? melange(e.items).slice(0, e.tirage) : e.items;
   vider();
   let cahier;
-  if (e.items.every((it) => !it.img)) {
+  if (e.dictee) {
+    // Dictado : l'appli dit le mot, Dorian l'écrit sans modèle ; l'adulte découvre la solution pour comparer.
+    cahier = document.createElement("ul"); cahier.className = "dictee";
+    items.forEach((it) => {
+      const li = document.createElement("li");
+      const vu = it.img ? `<span class="pastille">${DESSINS[it.img]}</span>` : `<span class="n">${it.texte}</span>`;
+      li.innerHTML = `${vu}<button class="ecoute-mot" aria-label="Escuchar">${ICONES.hautparleur}</button><span class="trait"></span>`;
+      li.querySelector(".ecoute-mot").addEventListener("click", () => { speechSynthesis.cancel(); parle(it.voz || it.nom, .7); });
+      cahier.append(li);
+    });
+  } else if (items.every((it) => !it.img)) {
     // Que des mots : une liste sur les lignes du cahier, à recopier.
     cahier = document.createElement("ol"); cahier.className = "lignes";
-    e.items.forEach((it) => { const li = document.createElement("li"); li.textContent = it.nom; li.addEventListener("click", () => parle(it.nom)); cahier.append(li); });
+    items.forEach((it) => { const li = document.createElement("li"); li.textContent = it.nom; li.addEventListener("click", () => parle(it.nom)); cahier.append(li); });
   } else {
-    cahier = document.createElement("div"); cahier.className = "cahier" + (e.items.length > 4 ? " trois" : "");
-    e.items.forEach((it) => cahier.append(cromo(it)));
+    cahier = document.createElement("div"); cahier.className = "cahier" + (items.length > 4 ? " trois" : "");
+    items.forEach((it) => cahier.append(cromo(it)));
   }
-  const note = document.createElement("p"); note.className = "note"; note.textContent = "Despacio y con letra bonita.";
+  const note = document.createElement("p"); note.className = "note"; note.textContent = e.dictee ? "Escríbelo sin mirar." : "Despacio y con letra bonita.";
+  let voir = null;
+  if (e.dictee) {
+    voir = document.createElement("button"); voir.className = "voir";
+    voir.innerHTML = `${ICONES.oeil}<span>Para el adulto: ver la solución</span>`;
+    voir.addEventListener("click", () => {
+      cahier.querySelectorAll(".trait").forEach((t, i) => { t.className = "sol"; t.textContent = items[i].nom; });
+      note.textContent = "Mirad juntos: ¿está igual en el cuaderno?"; voir.remove();
+    });
+  }
   const fait = bouton("¡Hecho!", "vert"); fait.insertAdjacentHTML("afterbegin", ICONES.ok); fait.style.marginTop = "auto";
   // « ¡Hecho! » se remplit comme une jauge, le temps réel d'écrire (environ 8 s par mot), puis s'active.
   fait.classList.add("jauge", "attente");
-  const dureeEcriture = e.items.length * 8000 * LENT;
+  const dureeEcriture = items.length * 8000 * LENT;
   fait.style.setProperty("--duree", dureeEcriture + "ms");
   requestAnimationFrame(() => fait.classList.add("remplit"));
   setTimeout(() => fait.classList.remove("attente"), dureeEcriture);
-  scene.append(cahier, note, fait);
-  consigne(e.consigne, () => direSuite([[e.voz, "es-ES"], [e.items.map((i) => i.nom).join(". "), LANGUE, .7]]));
+  scene.append(...[cahier, note, voir, fait].filter(Boolean));
+  // Dictado : chaque mot, puis un temps pour l'écrire.
+  if (e.dictee) consigne(e.consigne, async () => { await dire(e.voz, "es-ES"); for (const i of items) { await dire(i.voz || i.nom, LANGUE, .7); await attendre(4000 * LENT); } });
+  else consigne(e.consigne, () => direSuite([[e.voz, "es-ES"], [items.map((i) => i.nom).join(". "), LANGUE, .7]]));
   await new Promise((ok) => fait.addEventListener("click", () => { if (!fait.classList.contains("attente")) ok(); }));
   sonBien();
 }
@@ -502,16 +551,18 @@ const PARAMS = new URLSearchParams(location.search);
 const DEMO = PARAMS.has("demo");
 // En démo, rien n'est enregistré, sauf avec « &registro » (pour tester le suivi).
 const REGISTRAR = !DEMO || PARAMS.has("registro");
+// « &voz » : la démo garde la voix (pour que les parents testent une étape précise) ; il faut alors un premier toucher.
+const VOZ = DEMO && PARAMS.has("voz");
 Deberes.recuperer(); // une séance d'avant restée inachevée part dans la file
 Sync.vider();
 Sync.synchroniserProgreso(); // les cromos des autres téléphones : le sobre ne donnera pas un animal déjà gagné ailleurs
-if (DEMO) { window.dire = async () => {}; demoFaite = true; if (PARAMS.has("pause")) setTimeout(() => $("pause").click(), 300); }
+if (DEMO) { if (!VOZ) window.dire = async () => {}; demoFaite = true; if (PARAMS.has("pause")) setTimeout(() => $("pause").click(), 300); }
 
 (async () => {
   if (PARAMS.has("despues")) return apresLaPause();
   vider();
   const depart = DEMO ? +PARAMS.get("etape") || 0 : 0;
-  if (!DEMO) {
+  if (!DEMO || VOZ) {
     const go = bouton("¡Empezamos!"); go.style.marginTop = "auto";
     scene.append(go);
     $("texte").textContent = "Hoy: " + L.sujet;

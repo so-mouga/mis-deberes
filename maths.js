@@ -49,6 +49,7 @@ function svgPalitos(n, { barres = 0 } = {}) {
 
 // ---- Étape « Palitos » ----
 async function palitos(e) {
+  let dejaLu = false;
   for (const q of e.questions) {
     vider();
     if (q.mode === "lire") {
@@ -59,7 +60,8 @@ async function palitos(e) {
       const boutons = opts.map((o) => { const b = document.createElement("button"); b.className = "mot"; b.textContent = o; liste.append(b); return b; });
       scene.append(zone, liste);
       const g = garde(boutons);
-      g.ouvrir(consigne("¿Qué número es?", () => dire("¿Qué número es? Cada paquete tiene diez palitos.")));
+      g.ouvrir(consigneSuite("¿Qué número es?", () => dire("¿Qué número es? Cada paquete tiene diez palitos."),
+        () => dire("¿Qué número es?"), !dejaLu)); dejaLu = true;
       const bonne = boutons.find((b) => +b.textContent === q.n);
       let finie = false;
       await new Promise((fini) => boutons.forEach((b) => b.addEventListener("click", async () => {

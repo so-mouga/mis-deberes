@@ -43,7 +43,7 @@
   @keyframes entre{from{opacity:0;transform:translateY(12px)}}
 
   /* Descubre */
-  .grand{width:min(300px,80%);align-self:center}
+  .grand{width:min(300px,80%,34vh);align-self:center} /* 34vh : tient en 360 × 640 (26 nov.) */
   .grand b{font-size:30px}
   .sens{align-self:center;font-size:22px;font-weight:600;color:var(--encre-douce)}
 
@@ -68,7 +68,14 @@
 
   /* Lettres manquantes */
   .petit{width:min(150px,22vh);align-self:center;margin-top:auto}
-  .cases{display:flex;flex-wrap:wrap;justify-content:center;gap:6px}
+  .petit.mini{width:min(110px,17vh)}
+  .cases{display:flex;flex-wrap:wrap;justify-content:center;gap:8px 14px}
+  .cases .bloc{display:flex;gap:6px}
+  .cases.serre .bloc{gap:4px}
+  .cases.serre .l{width:34px;height:48px;font-size:27px}
+  .palier{align-self:center;display:flex;gap:6px}
+  .palier i{width:28px;height:8px;border-radius:4px;background:var(--page-fonce)}
+  .palier i.on{background:var(--jaune)}
   .l{width:40px;height:52px;border-radius:10px;display:grid;place-items:center;font-size:30px;font-weight:800;background:#fff;color:var(--marine)}
   .l.trou{background:transparent;border:3px dashed rgba(255,255,255,.6);color:#fff}
   .l.trou.suivant{border-color:var(--jaune);border-style:solid}
@@ -89,6 +96,10 @@
   .reponse{display:flex;align-items:center;justify-content:space-between;gap:10px;border-top:2px dashed #DCE4F5;padding-top:12px;font-size:18px;font-weight:600;color:#55617A}
   .reponse b{font-size:20px;color:var(--marine)}
   .carte-parent .reponse{margin-top:auto}
+  /* Réponse longue (une liste) : le texte sur toute la largeur, le bouton dessous (26 nov.) */
+  .reponse.long{flex-direction:column;align-items:stretch;gap:8px}
+  .reponse.long b{font-size:19px;line-height:1.3}
+  .reponse.long .ecoute{align-self:center;min-height:56px}
   .reponse .ecoute{flex:none;display:flex;align-items:center;gap:8px;min-height:64px;padding:0 20px 0 16px;border-radius:32px;background:var(--jaune);color:var(--marine);
     font-size:21px;font-weight:850;box-shadow:0 5px 0 var(--jaune-f);transition:transform .2s var(--ease)}
   .reponse .ecoute:active{transform:translateY(3px)}
@@ -109,6 +120,19 @@
     background-image:linear-gradient(#DCE4F5 1px,transparent 1px);background-size:100% 26px}
   .cahier .cromo{box-shadow:0 3px 8px rgba(0,0,0,.25)}
   .cahier .cromo b{font-size:24px}
+  /* Dictado */
+  .dictee{list-style:none;background:#fff;color:var(--marine);border-radius:18px;padding:8px 18px}
+  .dictee li{display:flex;align-items:center;gap:14px;min-height:50px;border-bottom:2px solid #DCE4F5}
+  .dictee li:last-child{border-bottom:0}
+  .dictee .n{min-width:52px;font-size:34px;font-weight:900;font-variant-numeric:tabular-nums}
+  .dictee .pastille{width:52px;height:42px;flex:none;display:grid;place-items:center}
+  .dictee .pastille svg{width:100%;height:100%}
+  .dictee .ecoute-mot{width:44px;height:44px;border-radius:50%;background:var(--jaune);color:var(--marine);display:grid;place-items:center;flex:none}
+  .dictee .ecoute-mot svg{width:24px;height:24px}
+  .dictee .trait{flex:1;height:30px;border-bottom:3px dashed #B9C7EA}
+  .dictee .sol{flex:1;font-size:26px;font-weight:850;color:var(--vert);animation:pose .35s var(--ease)}
+  .voir{align-self:center;display:flex;align-items:center;gap:10px;min-height:56px;padding:0 20px 0 16px;border-radius:28px;background:#fff;color:var(--marine);font-weight:800;font-size:18px;box-shadow:0 4px 0 #B9C7EA}
+  .voir svg{width:26px;height:26px}
   .note{font-size:21px;font-weight:600;color:var(--encre-douce);text-align:center}
 
   /* Démo : la main */
@@ -234,12 +258,12 @@
   <a class="gros" id="finBouton" href="index.html" hidden>Ver mi álbum</a>
 </section>
 
-<script src="commun.js?v=10"></script>
-<script src="lecons.js?v=11"></script>
-<script src="maths.js?v=15"></script>
+<script src="commun.js?v=11"></script>
+<script src="lecons.js?v=13"></script>
+<script src="maths.js?v=16"></script>
 <script src="animaux.js?v=12"></script>
 <script src="sync.js?v=7"></script>
 <script src="deberes.js?v=5"></script>
-<script src="moteur.js?v=21"></script>
+<script src="moteur.js?v=25"></script>
 </body>
 </html>

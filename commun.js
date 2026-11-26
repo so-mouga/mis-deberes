@@ -76,6 +76,12 @@ const DESSINS = {
   garage: `<svg viewBox="0 0 100 80"><path d="M10 30 50 14l40 16v44H10z" fill="#C9CED3" ${D}/><rect x="22" y="38" width="56" height="36" fill="#fff" ${D}/><path d="M22 47h56M22 56h56M22 65h56" ${D} stroke-width="2"/></svg>`,
   chimney: `<svg viewBox="0 0 100 80"><path d="M14 44 50 16l36 28" stroke="#9FB0D0" stroke-width="2.5" stroke-linejoin="round" fill="none"/><rect x="22" y="42" width="56" height="34" stroke="#9FB0D0" stroke-width="2.5" stroke-linejoin="round" fill="none"/><rect x="60" y="14" width="14" height="24" fill="#E0453F" ${D}/><rect x="57" y="10" width="20" height="6" fill="#E0453F" ${D}/><path d="M66 6c-4-3 4-5 0-8M74 6c-4-3 4-5 0-8" fill="none" ${D} stroke-width="2.5" transform="translate(0,2)"/></svg>`,
 };
+// Les couleurs : une tache de peinture (français, 26 nov. 2026).
+const COULEURS_FR = { rouge: "#E0453F", bleu: "#2F6FE0", jaune: "#F7D417", vert: "#2E9E57", orange: "#F5871F", rose: "#F59AC2",
+  violet: "#8A4FC9", noir: "#1E1E24", blanc: "#FFFFFF", marron: "#8A5A2E", gris: "#9AA1AB" };
+for (const [nom, c] of Object.entries(COULEURS_FR)) {
+  DESSINS["c-" + nom] = `<svg viewBox="0 0 100 80"><g fill="${c}" ${D}><path d="M50 10c9 0 11 9 19 8s15 6 12 14-1 9 3 15-4 15-12 13-9 7-15 10-15 1-18-5-13-5-16-12 2-12-2-19 7-12 14-13 6-11 15-11z"/><circle cx="85" cy="14" r="5"/><circle cx="15" cy="68" r="6"/><circle cx="88" cy="70" r="4"/></g></svg>`;
+}
 
 // Maison en coupe (4 pièces) avec maman dans une pièce.
 const PIECES = { bedroom: [10, 24], bathroom: [50, 24], kitchen: [10, 56], "living room": [50, 56] };
