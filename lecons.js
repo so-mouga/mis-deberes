@@ -24,6 +24,8 @@ const LECONS = {
     titre: "Inglés · Examen del jueves",
     court: "Inglés · examen",
     sujet: "Unit 2 · Home (examen)",
+    unidad: "Unit 2",
+    mezcla: true, // tout mélangé : seulement la veille et le jour de l'examen
     langue: "en-GB",
     cromos: ["house", "flat", "attic", "cellar", "garage", "chimney"].map((m) => ({ img: m, nom: m })),
     etapes: [
@@ -319,6 +321,7 @@ const LECONS = {
     titre: "Francés · Examen",
     court: "Francés · examen",
     sujet: "Todo mezclado: números, colores, días, meses y estaciones",
+    mezcla: true, // tout mélangé : seulement la veille et le jour de l'examen
     langue: "fr-FR",
     cromos: [],
     etapes: [
@@ -353,6 +356,7 @@ const LECONS = {
     titre: "Inglés · La casa",
     court: "Inglés",
     sujet: "Unit 2 · Home",
+    unidad: "Unit 2",
     langue: "en-GB",
     cromos: ["kitchen", "bedroom", "bathroom", "living room"].map((m) => ({ img: m, nom: m })),
     etapes: [

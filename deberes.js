@@ -34,8 +34,12 @@ const Deberes = (() => {
   };
   const NOM_LANGUE = { "en-GB": "Inglés", "fr-FR": "Francés" };
 
+  // Un point ne se rejoue que s'il correspond encore à une étape de sa leçon (une leçon découpée ou réécrite
+  // laisse des points orphelins, qui prendraient les places du Repaso pour rien).
+  const aUneEtape = ([id, x]) => (LECONS[x.leccion].etapes || []).some((e) => FILTRES[e.type] && FILTRES[e.type](e, (tipo, clave) => idPoint(x.leccion, tipo, clave) === id));
+
   function leconRepaso(p = puntos()) {
-    const liste = rejouables(p);
+    const liste = rejouables(p).filter(aUneEtape);
     if (!liste.length) return null;
     const parLangue = {};
     liste.forEach(([id, x]) => (parLangue[LECONS[x.leccion].langue] ??= []).push([id, x]));
@@ -67,35 +71,79 @@ const Deberes = (() => {
     };
   }
 
+  // ---- L'état d'une leçon : la seule fonction qui lit les réglages « temas » (espace parent v2, 26 nov. 2026) ----
+  // temas[k] = { semana: bool, control: "AAAA-MM-JJ" | "" }
+  //   semana  : la leçon est « au programme » (cochée par un parent) ;
+  //   control : la date de l'examen de sa matière (la page parent la recopie sur chaque leçon de la matière).
+  // temas.__examenes = { en|fr|ma: "AAAA-MM-JJ" } : la date saisie par matière (pour la page parent).
+  // temas.__plan = { "AAAA-MM-JJ": ["fr", "ma"] } : les matières choisies pour un jour (facultatif).
+  // C'est le même format qu'avant (semana / control) : un téléphone pas encore mis à jour continue de marcher.
+  // Le lendemain de l'examen, la leçon n'est plus au programme (sans rien effacer : la page parent la recoche si besoin).
+  function etatLecon(t, hoy = jour()) {
+    t = t || {};
+    const n = t.control ? ecart(hoy, t.control) : null; // jours avant l'examen (0 = aujourd'hui)
+    const passe = n !== null && n < 0;
+    const programme = !!t.semana && !passe;
+    return { programme, passe, examen: passe ? "" : t.control || "", jours: passe ? null : n, priorite: programme && n !== null && n <= 2 };
+  }
+  const matiereDe = (k) => String(k).slice(0, 2); // en, fr, ma (le préfixe de l'id)
+  const estMelange = (k) => !!(LECONS[k] && LECONS[k].mezcla); // « tout mélangé » : seulement la veille et le jour de l'examen
+
+  // Le meilleur thème parmi des candidats : pas déjà fait aujourd'hui ; si possible pas fait hier non plus ;
+  // puis jamais fait, puis le plus de points ratés à revoir (ce qu'il sait le moins), puis le moins récent.
+  function meilleur(ids, hechas, hoy, pts) {
+    const hier = jour(new Date(new Date(hoy + "T12:00").getTime() - 864e5));
+    const rates = (k) => Object.values(pts || {}).filter((x) => x.leccion === k).length;
+    const libres = ids.filter((k) => hechas[k] !== hoy);
+    const pasHier = libres.filter((k) => hechas[k] !== hier);
+    return (pasHier.length ? pasHier : libres).sort((x, y) =>
+      (hechas[x] ? 1 : 0) - (hechas[y] ? 1 : 0) || rates(y) - rates(x) || (hechas[x] || "").localeCompare(hechas[y] || "") || ids.indexOf(x) - ids.indexOf(y))[0];
+  }
+
   // ---- Le choix de la séance du jour (la première règle qui s'applique) ----
-  // ajustes : { temas, forzada, repasoDia } ; hechas : { leçon: date } ; repaso : la leçon Repaso possible (ou null).
-  function choisir({ ajustes, hechas = {}, repaso = null, hoy = jour() }) {
+  // ajustes : { temas, forzada, repasoDia } ; hechas : { leçon: date } ; repaso : la leçon Repaso possible (ou null) ;
+  // pts : les points ratés (sur la page parent, on ne les a pas : le choix se fait alors sur le reste).
+  // raison : forzada | plan | examen | repaso | turno | ninguno (la page parent la traduit) ; motivo : la même chose, en espagnol.
+  function choisir({ ajustes, hechas = {}, repaso = null, hoy = jour(), pts = null }) {
     const a = ajustes || {};
     const temas = a.temas || {};
     const ordre = Object.keys(LECONS).filter((k) => k !== REPASO);
+    const E = (k) => etatLecon(temas[k], hoy);
+    const prog = ordre.filter((k) => E(k).programme);
+    // Une matière : la leçon « tout mélangé » la veille et le jour de l'examen, sinon le thème qu'il sait le moins.
+    const pourMatiere = (m) => {
+      const ls = prog.filter((k) => matiereDe(k) === m);
+      const melange = ls.find((k) => estMelange(k) && E(k).jours !== null && E(k).jours <= 1 && hechas[k] !== hoy);
+      return melange || meilleur(ls.filter((k) => !estMelange(k)), hechas, hoy, pts);
+    };
     // 1. Un parent a forcé une leçon pour aujourd'hui.
-    if (a.forzada && a.forzada.fecha === hoy && LECONS[a.forzada.lecon]) return { id: a.forzada.lecon, motivo: "Elegida por papá o mamá para hoy" };
-    // 2. Un thème de la semaine a un contrôle dans les 3 jours (aujourd'hui compris) : le plus proche.
-    const semaine = ordre.filter((k) => temas[k] && temas[k].semana);
-    const controles = semaine.filter((k) => temas[k].control && ecart(hoy, temas[k].control) >= 0 && ecart(hoy, temas[k].control) <= 2)
-      .sort((x, y) => temas[x].control.localeCompare(temas[y].control));
-    if (controles.length) return { id: controles[0], motivo: `Control ${quand(temas[controles[0]].control, hoy)}` };
-    // 3. Le jour du Repaso, s'il y a des points ratés (et s'il n'a pas déjà été fait aujourd'hui).
-    const jourRepaso = a.repasoDia ?? 5;
-    if (repaso && new Date(hoy + "T12:00").getDay() === +jourRepaso && hechas[REPASO] !== hoy) return { id: REPASO, motivo: "Día de repaso" };
-    // 4. On alterne les thèmes de la semaine : celui fait le moins récemment.
-    if (semaine.length) {
-      const id = [...semaine].sort((x, y) => (hechas[x] || "").localeCompare(hechas[y] || ""))[0];
-      return { id, motivo: "Turno de los temas de la semana" };
+    if (a.forzada && a.forzada.fecha === hoy && LECONS[a.forzada.lecon]) return { id: a.forzada.lecon, raison: "forzada", motivo: "Elegida por papá o mamá para hoy" };
+    // 2. Les matières prévues pour aujourd'hui (planning) : la première pas encore faite aujourd'hui.
+    for (const m of (temas.__plan || {})[hoy] || []) {
+      if (ordre.some((k) => matiereDe(k) === m && hechas[k] === hoy)) continue;
+      const id = pourMatiere(m);
+      if (id) return { id, raison: "plan", motivo: "Previsto para hoy" };
     }
-    // 5. Aucun thème coché : la dernière leçon faite, ou la première de la liste.
+    // 3. Un examen dans les 3 jours (aujourd'hui compris) : la matière de l'examen le plus proche.
+    const urgents = prog.filter((k) => E(k).priorite).sort((x, y) => E(x).examen.localeCompare(E(y).examen));
+    for (const k of urgents) {
+      const id = pourMatiere(matiereDe(k));
+      if (id) return { id, raison: "examen", examen: E(k).examen, motivo: `Control ${quand(E(k).examen, hoy)}` };
+    }
+    // 4. Le jour du Repaso, s'il y a des points ratés (et s'il n'a pas déjà été fait aujourd'hui).
+    const jourRepaso = a.repasoDia ?? 5;
+    if (repaso && new Date(hoy + "T12:00").getDay() === +jourRepaso && hechas[REPASO] !== hoy) return { id: REPASO, raison: "repaso", motivo: "Día de repaso" };
+    // 5. On alterne les thèmes au programme.
+    const id = meilleur(prog.filter((k) => !estMelange(k)), hechas, hoy, pts);
+    if (id) return { id, raison: "turno", motivo: "Turno de los temas de la semana" };
+    // 6. Rien au programme : la dernière leçon faite, ou la première de la liste.
     const derniere = ordre.filter((k) => hechas[k]).sort((x, y) => hechas[y].localeCompare(hechas[x]))[0];
-    return { id: derniere || ordre[0], motivo: "Ningún tema marcado esta semana" };
+    return { id: derniere || ordre[0], raison: "ninguno", motivo: "Ningún tema marcado esta semana" };
   }
 
   const hechas = () => lire(CLE_HECHAS, {});
   // Sur le téléphone de Dorian : avec ses propres réglages et son historique.
-  const leconDuJour = () => choisir({ ajustes: Sync.ajustes(), hechas: hechas(), repaso: LECONS[REPASO] || null });
+  const leconDuJour = () => choisir({ ajustes: Sync.ajustes(), hechas: hechas(), repaso: LECONS[REPASO] || null, pts: puntos() });
 
   // ---- Le journal de la séance ----
   let S = null; // la séance en cours
@@ -193,8 +241,8 @@ const Deberes = (() => {
   function semaine(idDuJour, hoy = jour()) {
     const temas = (Sync.ajustes() || {}).temas || {};
     const h = hechas();
-    return Object.keys(LECONS).filter((k) => k !== REPASO && temas[k] && temas[k].semana).map((k) => {
-      const t = temas[k];
+    return Object.keys(LECONS).filter((k) => k !== REPASO && etatLecon(temas[k], hoy).programme).map((k) => {
+      const t = { control: etatLecon(temas[k], hoy).examen };
       const n = t.control ? ecart(hoy, t.control) : -1;
       let etiquette = { classe: "", texte: "" };
       if (h[k] && h[k] >= lundi(hoy)) etiquette = { classe: "ok", texte: "✓ " + (h[k] === hoy ? "hoy" : DIAS[new Date(h[k] + "T12:00").getDay()]) };
@@ -212,16 +260,29 @@ const Deberes = (() => {
   const matiere = (id) => (MATIERE[String(id).slice(0, 2)] || ["los deberes"])[0];
   function deuxiemeSeance(actuelle, hoy = jour()) {
     const h = hechas();
-    if (Object.values(h).filter((d) => d === hoy).length >= 2) return null;
-    const temas = (Sync.ajustes() || {}).temas || {};
-    const cands = Object.keys(LECONS).filter((k) => k !== REPASO && k !== actuelle && temas[k] && temas[k].semana && h[k] !== hoy);
-    const examen = cands.filter((k) => temas[k].control && [1, 2].includes(ecart(hoy, temas[k].control)))
-      .sort((x, y) => temas[x].control.localeCompare(temas[y].control))[0];
+    const faites = Object.values(h).filter((d) => d === hoy).length;
+    const ajustes = Sync.ajustes() || {};
+    const temas = ajustes.temas || {};
+    // Un jour planifié avec plusieurs matières (le week-end, par exemple) : une séance par matière, 3 au plus.
+    const plan = (temas.__plan || {})[hoy] || [];
+    if (plan.length > 1) {
+      if (faites >= Math.min(plan.length, 3)) return null;
+      const c = choisir({ ajustes: { ...ajustes, forzada: null }, hechas: h, hoy, pts: puntos() });
+      if (c.raison !== "plan" || c.id === actuelle || h[c.id] === hoy) return null;
+      const [avecArticle, seul] = MATIERE[c.id.slice(0, 2)] || ["esto", "sí"];
+      const meme = actuelle && actuelle.slice(0, 2) === c.id.slice(0, 2);
+      return { id: c.id, raison: "Papá o mamá lo han previsto para hoy.", question: meme ? `¿Hacemos otra de ${seul} hoy?` : `¿Hacemos también ${avecArticle} hoy?`, oui: meme ? "Sí, ¡otra!" : `Sí, ¡${seul}!` };
+    }
+    if (faites >= 2) return null;
+    const E = (k) => etatLecon(temas[k], hoy);
+    const cands = Object.keys(LECONS).filter((k) => k !== REPASO && k !== actuelle && E(k).programme && !estMelange(k) && h[k] !== hoy);
+    const examen = cands.filter((k) => E(k).examen && [1, 2].includes(E(k).jours))
+      .sort((x, y) => E(x).examen.localeCompare(E(y).examen))[0];
     const finSemaine = [4, 5, 6, 0].includes(new Date(hoy + "T12:00").getDay());
     const pasFait = finSemaine && cands.find((k) => !(h[k] && h[k] >= lundi(hoy)));
     const id = examen || pasFait;
     if (!id) return null;
-    const raison = examen ? (ecart(hoy, temas[id].control) === 1 ? "Mañana tienes examen." : "Pasado mañana tienes examen.") : "Todavía no lo has hecho esta semana.";
+    const raison = examen ? (E(id).jours === 1 ? "Mañana tienes examen." : "Pasado mañana tienes examen.") : "Todavía no lo has hecho esta semana.";
     const [avecArticle, seul] = MATIERE[id.slice(0, 2)] || ["esto", "sí"];
     const memeMatiere = actuelle && actuelle.slice(0, 2) === id.slice(0, 2);
     return {
@@ -245,10 +306,10 @@ const Deberes = (() => {
     const ajouter = (id, etapes) => etapes.filter((e) => AUTONOMES.includes(e.type)).forEach((e) => file.push({ ...e, origen: e.origen || id }));
     if (LECONS[REPASO]) ajouter(REPASO, LECONS[REPASO].etapes);
     const temas = (Sync.ajustes() || {}).temas || {};
-    Object.keys(LECONS).filter((k) => k !== REPASO && k !== actuelle && temas[k] && temas[k].semana).forEach((k) => ajouter(k, LECONS[k].etapes));
+    Object.keys(LECONS).filter((k) => k !== REPASO && k !== actuelle && etatLecon(temas[k]).programme).forEach((k) => ajouter(k, LECONS[k].etapes));
     if (LECONS[actuelle] && actuelle !== REPASO) ajouter(actuelle, LECONS[actuelle].etapes);
     return file;
   }
 
-  return { etapesRevision, reconstruireRepaso, ICONE, nomEtape, semaine, deuxiemeSeance, matiere, jour, ecart, quand, choisir, leconDuJour, leconRepaso, puntos, rejouables, hechas, commencer, erreur, pause, terminer, recuperer, REPASO };
+  return { etatLecon, matiereDe, estMelange, etapesRevision, reconstruireRepaso, ICONE, nomEtape, semaine, deuxiemeSeance, matiere, jour, ecart, quand, choisir, leconDuJour, leconRepaso, puntos, rejouables, hechas, commencer, erreur, pause, terminer, recuperer, REPASO };
 })();
