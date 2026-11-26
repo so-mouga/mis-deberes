@@ -139,6 +139,8 @@
     <section class="carte" style="margin-top:14px">
       <h2>Tiempo de trabajo antes de la pausa</h2>
       <div class="ligne"><select id="trabajoMin" aria-label="Tiempo de trabajo antes de la pausa"><option value="10">10 minutos</option><option value="15">15 minutos</option><option value="20">20 minutos</option></select></div>
+      <label class="ligne" style="margin-top:10px;font-weight:600;cursor:pointer"><input type="checkbox" id="tranquilo" style="width:24px;height:24px;accent-color:var(--jaune);flex:none"> Ritmo tranquilo: más tiempo antes de poder pasar o contestar</label>
+      <p class="aide">Si Dorian va demasiado rápido: las respuestas y el botón «Siguiente» esperan un poco más.</p>
       <p class="aide">Si termina la sesión antes, abre su sobre y sigue repasando (lo que le costó y los temas de la semana) hasta llegar a este tiempo. Sin reloj a la vista: la pausa llega al final del ejercicio.</p>
       <h2 style="margin-top:14px">Descanso entre sesiones</h2>
       <div class="ligne"><select id="pausaMin" aria-label="Duración del descanso"><option value="5">5 minutos</option><option value="10">10 minutos</option></select></div>
@@ -195,7 +197,7 @@
 
 <script src="lecons.js?v=11"></script>
 <script src="maths.js?v=15"></script>
-<script src="sync.js?v=5"></script>
+<script src="sync.js?v=6"></script>
 <script src="deberes.js?v=5"></script>
 <script>
   const $ = (id) => document.getElementById(id);
@@ -296,16 +298,18 @@
     $("pausaMin").value = pz.minutos === 10 ? "10" : "5";
     $("trabajoMin").value = [15, 20].includes(pz.trabajo) ? String(pz.trabajo) : "10";
     $("libreBonus").checked = !!pz.libreEnBonus;
+    $("tranquilo").checked = !!pz.tranquilo;
     $("repasoDia").innerHTML = [1, 2, 3, 4, 5, 6, 0].map((d) => `<option value="${d}"${d === +(A.repasoDia ?? 5) ? " selected" : ""}>Cada ${DIAS[d]}</option>`).join("");
     afficherHoy();
   }
 
   $("forzar").addEventListener("change", (ev) => changer({ forzada: ev.target.value ? { lecon: ev.target.value, fecha: hoy() } : null }));
   $("repasoDia").addEventListener("change", (ev) => changer({ repasoDia: +ev.target.value }));
-  const pausaActuelle = () => ({ minutos: +$("pausaMin").value === 10 ? 10 : 5, libreEnBonus: $("libreBonus").checked, trabajo: +$("trabajoMin").value });
+  const pausaActuelle = () => ({ minutos: +$("pausaMin").value === 10 ? 10 : 5, libreEnBonus: $("libreBonus").checked, trabajo: +$("trabajoMin").value, tranquilo: $("tranquilo").checked });
   $("trabajoMin").addEventListener("change", () => changer({ pausa: pausaActuelle() }));
   $("pausaMin").addEventListener("change", () => changer({ pausa: pausaActuelle() }));
   $("libreBonus").addEventListener("change", () => changer({ pausa: pausaActuelle() }));
+  $("tranquilo").addEventListener("change", () => changer({ pausa: pausaActuelle() }));
   $("temas").addEventListener("change", (ev) => {
     const ligne = ev.target.closest(".tema");
     if (!ligne) return;

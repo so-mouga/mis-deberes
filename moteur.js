@@ -41,6 +41,10 @@ function montrer(bonne) {
 // de calme pendant que la voix redit la bonne réponse. Cliquer au hasard ne fait donc plus gagner de temps.
 // On compte les erreurs très rapides (moins d'1 s) : drapeau « respuestas al azar » dans le suivi parent.
 const Rythme = { reponses: 0, hasard: 0 };
+// « Ritmo tranquilo » (page parents, ou ?tranquilo pour tester) : toutes les attentes sont plus longues.
+const TRANQUILO = PARAMS_T().has("tranquilo") || !!(typeof Sync !== "undefined" && Sync.pausa().tranquilo);
+function PARAMS_T() { return new URLSearchParams(location.search); }
+const LENT = TRANQUILO ? 1.7 : 1;
 function garde(elements) {
   let ouvert = false, calme = false, depuis = 0;
   const marquer = (on) => elements.forEach((el) => el.classList.toggle("attente", on));
@@ -48,7 +52,7 @@ function garde(elements) {
   return {
     // S'ouvre quand la voix a fini (filet : jamais plus de 12 s d'attente).
     ouvrir(voix) {
-      return Promise.race([Promise.resolve(voix), attendre(12000)]).then(() => { ouvert = true; depuis = Date.now(); if (!calme) marquer(false); });
+      return Promise.race([Promise.resolve(voix), attendre(12000)]).then(() => attendre(TRANQUILO ? 1200 : 0)).then(() => { ouvert = true; depuis = Date.now(); if (!calme) marquer(false); });
     },
     peut: () => ouvert && !calme,
     async reponse(juste, voix) {
@@ -56,7 +60,7 @@ function garde(elements) {
       if (juste) return;
       if (Date.now() - depuis < 1000) Rythme.hasard++;
       calme = true; marquer(true);
-      await Promise.race([Promise.all([Promise.resolve(voix), attendre(1500)]), attendre(4000)]);
+      await Promise.race([Promise.all([Promise.resolve(voix), attendre(1500 * LENT)]), attendre(4000 * LENT)]);
       calme = false; depuis = Date.now(); if (ouvert) marquer(false);
     },
   };
@@ -74,13 +78,37 @@ async function descubre(e) {
     vider();
     const c = cromo(it); c.classList.add("grand");
     const sens = document.createElement("p"); sens.className = "sens"; sens.textContent = "= " + it.es;
+    // Un gros bouton clair « Escúchalo y repítelo » (plus intuitif que toucher le dessin, qui marche aussi).
+    const repetir = document.createElement("button"); repetir.className = "repetir";
+    repetir.innerHTML = `${ICONES.hautparleur}<span>Escúchalo y repítelo</span>`;
+    const dilo = document.createElement("p"); dilo.className = "dilo";
     const suite = bouton("Siguiente"); suite.style.marginTop = "auto";
-    scene.append(c, sens, suite);
-    // « Siguiente » ne s'active qu'une fois le mot entendu.
-    const g = garde([suite]);
-    g.ouvrir(consigne(e.consigne, () => direSuite([[e.consigne + ".", "es-ES"], [it.es, "es-ES"], [it.voz, LANGUE, .8]])));
-    c.addEventListener("click", () => parle(it.voz));
-    await new Promise((ok) => suite.addEventListener("click", () => { if (g.peut()) ok(); }));
+    scene.append(c, sens, repetir, dilo, suite);
+    // Pour éviter de passer en tapant vite : il écoute, touche le dessin, réentend le mot et le répète à voix haute.
+    // « Siguiente » ne s'active qu'ensuite (jamais de blocage : filet de 20 s).
+    suite.classList.add("attente"); repetir.classList.add("a-toucher");
+    const voix = consigne(e.consigne, () => direSuite([[e.consigne + ".", "es-ES"], [it.es, "es-ES"], [it.voz, LANGUE, .8]]));
+    let touche = false;
+    const pret = new Promise((ok) => {
+      const ecouter = async () => {
+        speechSynthesis.cancel();
+        repetir.classList.add("joue");
+        await parle(it.voz);
+        repetir.classList.remove("joue");
+        if (touche) return;
+        touche = true; repetir.classList.remove("a-toucher"); repetir.classList.add("fait");
+        dilo.textContent = "¡Dilo tú!"; dilo.classList.add("a-toi");
+        await dire("¡Dilo tú!");
+        await attendre(2000 * LENT);
+        ok();
+      };
+      repetir.addEventListener("click", ecouter);
+      c.addEventListener("click", ecouter);
+      Promise.resolve(voix).then(() => attendre(20000)).then(ok);
+    });
+    await pret;
+    suite.classList.remove("attente");
+    await clic(suite);
     sonTouche();
   }
 }
@@ -315,9 +343,16 @@ async function cuaderno(e) {
   }
   const note = document.createElement("p"); note.className = "note"; note.textContent = "Despacio y con letra bonita.";
   const fait = bouton("¡Hecho!", "vert"); fait.insertAdjacentHTML("afterbegin", ICONES.ok); fait.style.marginTop = "auto";
+  // « ¡Hecho! » se remplit comme une jauge, le temps réel d'écrire (environ 8 s par mot), puis s'active.
+  fait.classList.add("jauge", "attente");
+  const dureeEcriture = e.items.length * 8000 * LENT;
+  fait.style.setProperty("--duree", dureeEcriture + "ms");
+  requestAnimationFrame(() => fait.classList.add("remplit"));
+  setTimeout(() => fait.classList.remove("attente"), dureeEcriture);
   scene.append(cahier, note, fait);
   consigne(e.consigne, () => direSuite([[e.voz, "es-ES"], [e.items.map((i) => i.nom).join(". "), LANGUE, .7]]));
-  await clic(fait); sonBien();
+  await new Promise((ok) => fait.addEventListener("click", () => { if (!fait.classList.contains("attente")) ok(); }));
+  sonBien();
 }
 
 // ---------- Fin : le sobre, puis (si la séance a été trop rapide) de la révision, puis la pause ----------

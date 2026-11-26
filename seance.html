@@ -22,6 +22,24 @@
   .entre{animation:entre .45s var(--ease) both}
   /* Anti-précipitation : les réponses attendent la fin de la voix (et ~1,5 s après une erreur). Léger, jamais punitif. */
   .attente{pointer-events:none;opacity:.55;transition:opacity .3s}
+  /* Mira y escucha : toucher le dessin, puis le répéter */
+  .repetir{align-self:center;display:flex;align-items:center;gap:10px;min-height:60px;padding:0 22px 0 16px;border-radius:30px;background:var(--jaune);color:var(--marine);
+    font-weight:850;font-size:20px;box-shadow:0 5px 0 var(--jaune-f);transition:transform .2s var(--ease)}
+  .repetir svg{width:30px;height:30px}
+  .repetir:active{transform:translateY(3px);box-shadow:0 2px 0 var(--jaune-f)}
+  .repetir.a-toucher{animation:appel 1.6s ease-in-out infinite}
+  .repetir.joue{background:#fff}
+  .repetir.fait{background:var(--page-fonce);color:#fff;box-shadow:0 5px 0 var(--page-ombre)}
+  .repetir.fait.joue{background:#fff;color:var(--marine)}
+  .dilo{min-height:32px;align-self:center;font-size:20px;font-weight:800;color:var(--encre-douce);text-align:center}
+  .dilo.a-toi{color:var(--jaune);font-size:26px;animation:pose .4s var(--ease)}
+  .cromo.a-toucher{animation:appel 1.6s ease-in-out infinite}
+  @keyframes appel{50%{transform:scale(1.04)}}
+  /* En tu cuaderno : le bouton se remplit comme une jauge */
+  .gros.jauge{position:relative;overflow:hidden;isolation:isolate}
+  .gros.jauge::before{content:"";position:absolute;inset:0;z-index:-1;background:rgba(255,255,255,.28);transform:scaleX(0);transform-origin:left}
+  .gros.jauge.remplit::before{transform:scaleX(1);transition:transform var(--duree) linear}
+  .gros.jauge.attente{opacity:.8}
   @keyframes entre{from{opacity:0;transform:translateY(12px)}}
 
   /* Descubre */
@@ -220,8 +238,8 @@
 <script src="lecons.js?v=11"></script>
 <script src="maths.js?v=15"></script>
 <script src="animaux.js?v=12"></script>
-<script src="sync.js?v=5"></script>
+<script src="sync.js?v=6"></script>
 <script src="deberes.js?v=5"></script>
-<script src="moteur.js?v=17"></script>
+<script src="moteur.js?v=20"></script>
 </body>
 </html>
