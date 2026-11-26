@@ -74,7 +74,7 @@ const Travail = {
 
 // ---------- Descubre ----------
 async function descubre(e) {
-  for (const it of e.items) {
+  for (const [rang, it] of e.items.entries()) {
     vider();
     const c = cromo(it); c.classList.add("grand");
     const sens = document.createElement("p"); sens.className = "sens"; sens.textContent = "= " + it.es;
@@ -87,7 +87,12 @@ async function descubre(e) {
     // Pour éviter de passer en tapant vite : il écoute, touche le dessin, réentend le mot et le répète à voix haute.
     // « Siguiente » ne s'active qu'ensuite (jamais de blocage : filet de 20 s).
     suite.classList.add("attente"); repetir.classList.add("a-toucher");
-    const voix = consigne(e.consigne, () => direSuite([[e.consigne + ".", "es-ES"], [it.es, "es-ES"], [it.voz, LANGUE, .8]]));
+    // La consigne n'est dite qu'au premier mot ; ensuite, seulement le mot (« Doce… douze »).
+    // Le haut-parleur de la consigne redit toujours tout.
+    const toutDire = () => direSuite([[e.consigne + ".", "es-ES"], [it.es, "es-ES"], [it.voz, LANGUE, .8]]);
+    let voix;
+    if (rang === 0) voix = consigne(e.consigne, toutDire);
+    else { $("texte").textContent = e.consigne; redire = toutDire; voix = direSuite([[it.es, "es-ES"], [it.voz, LANGUE, .8]]); }
     let touche = false;
     const pret = new Promise((ok) => {
       const ecouter = async () => {
@@ -98,8 +103,9 @@ async function descubre(e) {
         if (touche) return;
         touche = true; repetir.classList.remove("a-toucher"); repetir.classList.add("fait");
         dilo.textContent = "¡Dilo tú!"; dilo.classList.add("a-toi");
-        await dire("¡Dilo tú!");
-        await attendre(2000 * LENT);
+        // « Siguiente » s'active peu après « ¡Dilo tú! » (le temps de répéter), sans attendre la fin de la voix.
+        dire("¡Dilo tú!");
+        await attendre(1200 * LENT);
         ok();
       };
       repetir.addEventListener("click", ecouter);
