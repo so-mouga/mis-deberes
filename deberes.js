@@ -218,12 +218,28 @@ const Deberes = (() => {
   }
 
   // Au lancement : une séance commencée et jamais finie (appli fermée, il a craqué) part aussi, marquée « sin terminar ».
-  function recuperer() {
-    const s = lire(CLE_EN_CURSO, null);
-    if (!s || !s.id) return;
+  // Sauf si elle date d'aujourd'hui et qu'au moins une étape est faite : Dorian est peut-être sorti par erreur,
+  // elle attend qu'il revienne (reprendre). Le lendemain, elle part comme les autres.
+  const reprenable = (s) => !!(s && s.id && s.fecha === jour() && s.etape > 0);
+  function envoyerInachevee(s) {
     try { localStorage.removeItem(CLE_EN_CURSO); } catch {}
     Sync.encoler(versEnvoi({ ...s, fin: s.fin || s.dernier || s.inicio }, false));
   }
+  function recuperer() {
+    const s = lire(CLE_EN_CURSO, null);
+    if (!s || !s.id || reprenable(s)) return;
+    envoyerInachevee(s);
+  }
+  // À l'ouverture d'une séance : si la même leçon a été quittée aujourd'hui en cours de route, on la reprend
+  // (renvoie l'étape où reprendre, et le journal continue). Sinon 0, et une autre séance en attente part.
+  function reprendre(leccion) {
+    const s = lire(CLE_EN_CURSO, null);
+    if (reprenable(s) && s.leccion === leccion) { S = s; garder(); return s.etape; }
+    if (s && s.id) envoyerInachevee(s);
+    return 0;
+  }
+  // L'étape où en est Dorian (celle à refaire s'il sort maintenant).
+  function etape(i) { if (S) { S.etape = i; garder(); } }
 
   // ---- Les étapes, nommées (écran du jour) ----
   const ICONE = { descubre: "oeil", toca: "oreille", elige: "question", vrai: "ok", letras: "lettres", papa: "duo", cuaderno: "crayon", palitos: "palitos", problema: "calcul", fin: "etoile" };
@@ -311,5 +327,5 @@ const Deberes = (() => {
     return file;
   }
 
-  return { etatLecon, matiereDe, estMelange, etapesRevision, reconstruireRepaso, ICONE, nomEtape, semaine, deuxiemeSeance, matiere, jour, ecart, quand, choisir, leconDuJour, leconRepaso, puntos, rejouables, hechas, commencer, erreur, pause, terminer, recuperer, REPASO };
+  return { etatLecon, matiereDe, estMelange, etapesRevision, reconstruireRepaso, ICONE, nomEtape, semaine, deuxiemeSeance, matiere, jour, ecart, quand, choisir, leconDuJour, leconRepaso, puntos, rejouables, hechas, commencer, erreur, pause, terminer, recuperer, reprendre, etape, REPASO };
 })();

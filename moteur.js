@@ -544,6 +544,47 @@ function proposer(p, titre = "") {
   direSuite([[titre ? titre + " ¡Muy bien, Dorian!" : "¡Muy bien, Dorian! Tu descanso ha acabado.", "es-ES"], [p.question, "es-ES"], [p.raison, "es-ES"]]);
 }
 
+// ---------- Démarrage sans écran « ¡Empezamos! » ----------
+// Chrome peut refuser de parler tant que la page n'a pas été touchée : l'erreur « not-allowed » arrive tout de suite.
+function voixAutorisee(texte) {
+  if (!("speechSynthesis" in window)) return Promise.resolve(true);
+  speechSynthesis.cancel();
+  return new Promise((ok) => {
+    const u = new SpeechSynthesisUtterance(texte);
+    u.lang = "es-ES"; u.rate = .9;
+    u.voice = VOIX.find((v) => v.lang === "es-ES" && /Google/.test(v.name)) || VOIX.find((v) => v.lang === "es-ES") || null;
+    let parti = false;
+    u.onstart = () => { parti = true; };
+    u.onend = () => ok(true);
+    u.onerror = (ev) => ok(ev.error !== "not-allowed");
+    speechSynthesis.speak(u);
+    setTimeout(() => { if (!parti) { speechSynthesis.cancel(); ok(true); } }, 3000); // voix lente à charger : on avance
+    setTimeout(() => ok(true), 3000 + texte.length * 90);
+  });
+}
+// Les petits sons : le contexte audio créé sans toucher reste « suspendu », il repart au premier toucher.
+document.addEventListener("pointerdown", () => { try { if (CTX && CTX.state === "suspended") CTX.resume(); } catch {} }, { capture: true });
+
+// ---------- Sortie par erreur (geste « retour » d'Android) ----------
+// Au premier toucher, on ajoute une entrée d'historique : le geste retour ouvre « ¿Quieres salir? » au lieu de quitter.
+// S'il sort quand même, la séance reprend à son étape (Deberes.reprendre).
+document.addEventListener("pointerdown", () => {
+  if (Sortie.piege || Sortie.libre || DEMO) return;
+  Sortie.piege = true; history.pushState({ seance: 1 }, "");
+}, { capture: true });
+addEventListener("popstate", () => {
+  if (!Sortie.piege || Sortie.libre) return;
+  Sortie.piege = false;
+  speechSynthesis.cancel();
+  const v = document.createElement("section"); v.className = "voile"; v.style.zIndex = 50;
+  v.innerHTML = `<h2>¿Quieres salir?</h2><p>Si sales, luego seguimos donde lo dejaste.</p>`;
+  const non = bouton("No, sigo"), oui = bouton("Sí, salir", "clair");
+  v.append(non, oui); document.body.append(v);
+  dire("¿Quieres salir?");
+  non.addEventListener("click", () => { v.remove(); Sortie.piege = true; history.pushState({ seance: 1 }, ""); sonTouche(); redire(); });
+  oui.addEventListener("click", () => { Sortie.libre = true; speechSynthesis.cancel(); location.replace("index.html"); });
+});
+
 // ---------- Pause demandée par Dorian ----------
 let souffleTic;
 $("pause").addEventListener("click", () => {
@@ -567,7 +608,9 @@ const DEMO = PARAMS.has("demo");
 const REGISTRAR = !DEMO || PARAMS.has("registro");
 // « &voz » : la démo garde la voix (pour que les parents testent une étape précise) ; il faut alors un premier toucher.
 const VOZ = DEMO && PARAMS.has("voz");
-Deberes.recuperer(); // une séance d'avant restée inachevée part dans la file
+// Une séance de cette leçon quittée aujourd'hui en cours de route reprend à son étape ; une autre séance inachevée part dans la file.
+const Sortie = { libre: false, piege: false }; // voir « Sortie par erreur », plus bas
+const REPRISE = REGISTRAR && !PARAMS.has("despues") ? Deberes.reprendre(ID) : (Deberes.recuperer(), 0);
 Sync.vider();
 Sync.synchroniserProgreso(); // les cromos des autres téléphones : le sobre ne donnera pas un animal déjà gagné ailleurs
 if (DEMO) { if (!VOZ) window.dire = async () => {}; demoFaite = true; if (PARAMS.has("pause")) setTimeout(() => $("pause").click(), 300); }
@@ -575,19 +618,28 @@ if (DEMO) { if (!VOZ) window.dire = async () => {}; demoFaite = true; if (PARAMS
 (async () => {
   if (PARAMS.has("despues")) return apresLaPause();
   vider();
-  const depart = DEMO ? +PARAMS.get("etape") || 0 : 0;
+  const depart = DEMO ? +PARAMS.get("etape") || 0 : REPRISE;
   if (!DEMO || VOZ) {
-    const go = bouton("¡Empezamos!"); go.style.marginTop = "auto";
-    scene.append(go);
-    $("texte").textContent = "Hoy: " + L.sujet;
-    await clic(go); sonTouche(); // le premier toucher autorise la voix
+    // On démarre tout de suite (il vient de toucher « a los deberes »). Si Chrome refuse quand même la voix
+    // sans un toucher sur cette page, le bouton « ¡Empezamos! » revient, seulement dans ce cas.
+    $("texte").textContent = REPRISE ? "Seguimos donde lo dejaste" : "Hoy: " + L.sujet;
+    const accueil = REPRISE ? "¡Hola otra vez, Dorian! Seguimos donde lo dejaste." : "¡Vamos, Dorian!";
+    if (!(await voixAutorisee(accueil))) {
+      const go = bouton("¡Empezamos!"); go.style.marginTop = "auto";
+      scene.append(go);
+      await clic(go); sonTouche();
+      await dire(accueil);
+    }
   }
-  if (REGISTRAR) Deberes.commencer(ID);
+  if (REGISTRAR && !REPRISE) Deberes.commencer(ID);
   Travail.debut = Date.now();
   for (const [i, e] of ETAPES.entries()) {
     if (i < depart) continue;
     cases.forEach((c, j) => { c.classList.toggle("faite", j < i); c.classList.toggle("ici", j === i); });
-    if (e.type === "fin") await fin(); else await FAIRE[e.type](e);
+    if (e.type === "fin") { Sortie.libre = true; if (Sortie.piege) history.back(); await fin(); continue; }
+    if (REGISTRAR) Deberes.etape(i);
+    await FAIRE[e.type](e);
+    if (REGISTRAR) Deberes.etape(i + 1); // étape finie : s'il sort pendant la mini-partie, on reprend à la suivante
     // Mode mini-parties : après chaque bloc de 2 ou 3 étapes, une partie courte (le temps de jeu ne compte pas comme travail).
     if (e.type !== "fin" && MiniPartidas.actif && MiniPartidas.apres(i, ETAPES.length - 1)) {
       const debutJeu = Date.now();
