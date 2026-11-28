@@ -265,7 +265,7 @@ select,input[type=date],input[type=text]{min-height:44px;border-radius:10px;bord
 
 <script src="lecons.js?v=14"></script>
 <script src="maths.js?v=15"></script>
-<script src="sync.js?v=7"></script>
+<script src="sync.js?v=8"></script>
 <script src="deberes.js?v=7"></script>
 <script>
   // ================= Textes (français / espagnol) : aucun texte en dur ailleurs =================
@@ -628,10 +628,16 @@ select,input[type=date],input[type=text]{min-height:44px;border-radius:10px;bord
   // Les jeux de la pause (BRIEF-mini-parties.md) : rangés dans « pausa » (clé déjà connue du script Google : rien à redéployer).
   // pausa.juegos = { modo: "mini" | "pausa", eleccion, duracion, bloque, permitidos: [...] } ; seuls le mode et les jeux se règlent ici,
   // le reste garde les valeurs du brief (au hasard, partie courte, 3 exercices).
-  const JEUX = [["minero", "El pequeño minero"], ["guardianes", "Los guardianes"], ["burbujas", "Cañón de burbujas"], ["caminos", "Tres caminos"]];
+  const JEUX = [["minero", "El pequeño minero"], ["guardianes", "Los guardianes"], ["burbujas", "Cañón de burbujas"], ["caminos", "Tres caminos"], ["devora", "¡Ñam! (el tiburón)"]];
   const JEUX_DEFAUT = { modo: "mini", eleccion: "auto", duracion: "corta", bloque: 3, permitidos: JEUX.map(([id]) => id) };
-  const juegos = () => ({ ...JEUX_DEFAUT, ...((A.pausa || {}).juegos || {}) });
-  const changerJeux = (partiel) => changer({ pausa: { ...(A.pausa || {}), juegos: { ...juegos(), ...partiel } } });
+  // Un jeu ajouté après l'enregistrement de la liste (absent de « conocidos ») est coché d'office, comme dans mini-parties.js.
+  const CONNUS_AVANT = ["minero", "guardianes", "burbujas", "caminos"];
+  const juegos = () => {
+    const j = { ...JEUX_DEFAUT, ...((A.pausa || {}).juegos || {}) };
+    const connus = Array.isArray(j.conocidos) ? j.conocidos : CONNUS_AVANT;
+    return { ...j, permitidos: JEUX.map(([id]) => id).filter((id) => j.permitidos.includes(id) || !connus.includes(id)) };
+  };
+  const changerJeux = (partiel) => changer({ pausa: { ...(A.pausa || {}), juegos: { ...juegos(), ...partiel, conocidos: JEUX.map(([id]) => id) } } });
 
   function pageReglages() {
     const pz = A.pausa || {};

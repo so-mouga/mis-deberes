@@ -15,7 +15,11 @@ const MiniPartidas = (() => {
     { id: "guardianes", page: "guardianes.html", nom: "Los guardianes", fond: "#E4DDF7" },
     { id: "burbujas", page: "burbujas.html", nom: "Cañón de burbujas", fond: "#CFE8FF" },
     { id: "caminos", page: "tres-caminos.html", nom: "Tres caminos", fond: "#CFF2DD" },
+    { id: "devora", page: "devora.html", nom: "¡Ñam!", fond: "#BFE6F2" }, // le requin (28 nov. 2026)
   ];
+  // Les jeux que la page des parents connaissait quand la liste a été enregistrée (« conocidos ») ; un jeu ajouté depuis
+  // est permis d'office. Les listes enregistrées avant le 28 nov. ne connaissaient que les 4 premiers.
+  const CONNUS_AVANT = ["minero", "guardianes", "burbujas", "caminos"];
   const lire = (cle, defaut) => { try { return JSON.parse(localStorage.getItem(cle)) ?? defaut; } catch { return defaut; } };
   const ecrire = (cle, v) => { try { localStorage.setItem(cle, JSON.stringify(v)); } catch {} };
 
@@ -23,7 +27,8 @@ const MiniPartidas = (() => {
     const A = (typeof Sync !== "undefined" && Sync.ajustes()) || {};
     const j = (A.pausa || {}).juegos || A.juegos || {};
     const ids = JEUX.map((x) => x.id);
-    let permitidos = Array.isArray(j.permitidos) ? j.permitidos.filter((id) => ids.includes(id)) : ids;
+    const connus = Array.isArray(j.conocidos) ? j.conocidos : CONNUS_AVANT;
+    let permitidos = Array.isArray(j.permitidos) ? ids.filter((id) => j.permitidos.includes(id) || !connus.includes(id)) : ids;
     if (P.get("juegos")) permitidos = P.get("juegos").split(",").filter((id) => ids.includes(id));
     if (!permitidos.length) permitidos = ids; // jamais sans jeu
     return {

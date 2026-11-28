@@ -1,0 +1,1233 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>¡Ñam!</title>
+<link rel="stylesheet" href="style.css?v=10">
+<link rel="stylesheet" href="pause.css?v=1">
+<style>
+  .bulle{top:14px;max-width:92%;white-space:normal;text-align:center}
+  .terrain{background:#1C7CC2}
+  /* Le bouton de pouvoir : sur le côté, il se remplit en mangeant, il brille quand il est prêt */
+  .pouvoir{position:absolute;right:10px;bottom:86px;z-index:4;width:86px;height:86px;border-radius:50%;padding:0;border:0;
+    background:conic-gradient(#FFD34D calc(var(--c,0)*1turn),rgba(255,255,255,.22) 0);display:grid;place-items:center;touch-action:none;
+    box-shadow:0 5px 0 rgba(0,0,0,.3);transition:transform .15s}
+  .pouvoir i{width:72px;height:72px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#8B6CFF,#3B1F8F);display:grid;place-items:center;border:3px solid #fff}
+  .pouvoir svg{width:44px;height:44px;opacity:.55}
+  .pouvoir b{position:absolute;bottom:-20px;left:50%;transform:translateX(-50%);white-space:nowrap;font-size:12px;font-weight:900;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.8);opacity:.8}
+  .pouvoir.pret{animation:pret 1s ease-in-out infinite}
+  .pouvoir.pret i{background:radial-gradient(circle at 35% 30%,#FFE27A,#F08A1C);box-shadow:0 0 22px 6px rgba(255,211,77,.8)}
+  .pouvoir.pret svg{opacity:1}
+  .pouvoir.non{animation:non .3s}
+  @keyframes pret{50%{transform:scale(1.1)}}
+  @keyframes non{25%{transform:translateX(-5px)}75%{transform:translateX(5px)}}
+  @media (prefers-reduced-motion:reduce){.pouvoir.pret,.pouvoir.non{animation:none}}
+</style>
+</head>
+<body>
+<main class="jeu">
+  <div class="hud"><h1 id="titre">¡Ñam!</h1><div class="temps"><i id="barre"></i></div><span class="total" id="total"><span class="ani"><img id="tete" src="img/02.jpg" alt=""></span><span id="nb">0</span></span></div>
+  <div class="ultimo" id="ultimo" hidden>¡Último minuto!</div>
+  <section class="terrain" id="terrain">
+    <canvas id="toile"></canvas>
+    <div class="bulle" id="bulle" hidden></div>
+    <button class="pouvoir" id="pouvoir" aria-label="Poder"><i id="icone"></i><b id="nomPouvoir"></b></button>
+  </section>
+</main>
+<section class="ecran-fin" id="fin" hidden></section>
+
+<script src="commun.js?v=11"></script>
+<script src="animaux.js?v=12"></script>
+<script src="sync.js?v=8"></script>
+<script src="pause-commun.js?v=4"></script>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const DOUX = DOUX_JEU;
+
+  // =====================================================================
+  // LES IDÉES DU JEU : tout ce que Dorian peut inventer est ICI, et seulement ici
+  // (nom du jeu, nom du héros, phrases, nom du jefe). Le reste du code ne contient pas de texte.
+  // =====================================================================
+  const IDEES = {
+    nom: "¡Ñam!",
+    heros: { n: 2, nom: "el tiburón" },       // son requin : img/sprite/02.webp
+    consigne: "¡Come peces pequeños y crece! ¡Cuidado con los grandes!",
+    geste: "Pon el dedo y nada",
+    bouchees: ["¡Ñam!", "¡Ñam ñam!", "¡Rico!", "¡Crunch!"],
+    frenesi: "¡Frenesí!",
+    recrache: ["¡Puaj!", "¡Sabes a calcetín!", "¡Pica!", "¡Qué asco, brócoli!"], // un gros le recrache : jamais mangé pour de bon
+    revanche: "¡Revancha!",
+    plusGrand: "¡Ahora eres más grande! ¡Cómetelo!",
+    peur: "¡Ahora te tienen miedo!",
+    sombra: "¡Uy! ¿Qué es eso?",
+    evolution: (nom) => `¡${nom} ha evolucionado!`,
+    superpoder: { nom: "¡Imán!", titre: "¡Superpoder: imán!", dit: "¡Superpoder: imán! La comida viene sola." },
+    medusa: "¡Bzz!", globo: "¡Pincha!", encre: "¡Tinta!", murena: "¡Ñac!", aviso: "!",
+    zones: ["El arrecife", "El bosque de algas", "La cueva oscura", "El abismo"],
+    zonesDit: ["¡El arrecife!", "¡El bosque de algas! Cuidado con la morena.", "¡Qué oscuro! La cueva de las medusas.", "¡El abismo! Aquí vive el jefe."],
+    jefe: "el Gran Abisal",
+    jefeArrive: (jefe) => `¡Cuidado! ¡Llega ${jefe}! Come mucho para ser más grande.`,
+    jefeTropGros: ["¡Soy demasiado grande!", "¡Come más!", "¡Todavía no!"],
+    jefeMangeable: "¡Ahora! ¡Cómete al jefe!",
+    jefeFatigue: "¡Me rindo!",
+    nouvelleDescente: "¡Otra vez al fondo, más grande!",
+    festin: "¡Ahora todo el mar es tuyo! ¡A comer!",
+    rey: "¡Eres el rey del mar!",
+    // un pouvoir par transformation (le bouton sur le côté)
+    pouvoirs: ["¡Supermordisco!", "¡Torbellino!", "¡Rayo de cristal!", "¡Ola dorada!"],
+    nouveauPouvoir: (nom) => `¡Nuevo poder: ${nom}`.replace(/!$/, "") + "!",
+    pret: "¡Poder listo!",
+    pretToque: "¡Poder listo! Toca el botón.",
+    mordu: ["¡Ay!", "¡Ay, mi colita!", "¡Auch!", "¡Mamáaa!"],   // ses animaux mordus pour rire (jamais mangés)
+  };
+
+  // Les 4 évolutions du requin, dessinées par Gemini (sprites détourés, pieds en bas, tourné vers la droite).
+  // En attendant : null = le sprite de base, qui grossit. Quand les images arrivent : "img/evo/02-2.webp", "02-3", "02-4".
+  // Ses animaux de la mer en ennemis (s'il les a) : ils mordent… et se font mordre pour rire (pansement), jamais mangés.
+  const MES = mesAnimaux();
+  const ANI = { delfin: 6, pulpo: 1, narval: 12, orca: 13 };
+  const ANI_OK = (k) => MES.includes(ANI[k]);
+  const SPR_ENNEMIS = chargerSprites(Object.values(ANI));
+  const CHARGEURS = ["barracuda", "delfin", "narval"]; // ils préviennent (« ! ») puis foncent
+
+  const EVOLUTIONS = [null, "img/evo/requin-2.webp", "img/evo/requin-3.webp", "img/evo/requin-4.webp"]; // Gemini, 28 nov. (sources : animaux/evo/requin-N.jpg)
+
+  // ---- Les 4 zones de la descente ----
+  const P = (c, c2, luz) => ({ k: "pez", c, c2, luz });
+  const ZONES = [
+    { fond: ["#5CC9F2", "#1C7CC2"], nuit: 0,   rayons: .12, decor: ["coral", "anemona", "roca", "coral", "arena"],
+      proies: [P("#FFD23F", "#FF8C42"), P("#FF7AA8", "#FFFFFF"), P("#C9D6E3", "#8FA3B8"), { k: "gamba", c: "#FF8F80" }] },
+    { fond: ["#33A99D", "#0E5866"], nuit: .18, rayons: .07, decor: ["kelp", "kelp", "tabla", "roca", "kelp"],
+      proies: [P("#9BE36B", "#3E8F48"), P("#C9D6E3", "#8FA3B8"), { k: "gamba", c: "#FFB07A" }, P("#FFD23F", "#2E9E57")] },
+    { fond: ["#1F4166", "#0A1A2E"], nuit: .55, rayons: 0,   decor: ["sombre", "cristal", "sombre", "cristal"],
+      proies: [P("#7FF0FF", "#1D67B0", "#7FF0FF"), { k: "krill", c: "#FF9AD5", luz: "#FF9AD5" }, P("#B8FF7A", "#2E6B3A", "#B8FF7A")] },
+    { fond: ["#0D1A38", "#02060F"], nuit: .7,  rayons: 0,   decor: ["sombre", "cristal", "sombre"],
+      proies: [P("#FFF27A", "#B05BE0", "#FFF27A"), { k: "krill", c: "#7FF0FF", luz: "#7FF0FF" }, P("#FF9AD5", "#6B3FA0", "#FF9AD5")] },
+  ];
+  const FZ = [0, .22, .45, .68];         // début de chaque zone (progression du tour)
+  const zoneDe = (p) => (p >= FZ[3] ? 3 : p >= FZ[2] ? 2 : p >= FZ[1] ? 1 : 0);
+
+  // ---- Les tailles et le rythme ----
+  const R0 = 18;                          // rayon de départ (unités du monde)
+  const SEUILS = [1, 2.2, 4.5, 8];        // masse des 4 niveaux d'évolution
+  const TIERS = [24, 36, 50];             // rayon des 3 sortes de gros : barracuda ; morena ou pez dientón ; calamar
+  const R_JEFE = 62;
+  const M_TOUR = 15, F_PLEIN = .8;        // une descente : la masse ×15, atteinte à 80 %
+  const F_JEFE = .7, F_SUIT = .75, F_FATIGUE = .83, F_REDDITION = .88;
+  const DJ = DUREE_JEU;
+  const NB_TOURS = TEST_RAPIDE || MODE_PARTIE ? 1 : Math.max(1, Math.min(3, Math.round(DJ / 180000)));
+  const DT = DJ / NB_TOURS;               // durée d'une descente (ms)
+  const OUVERTURE = 15000;                // les 15 premières secondes sont écrites à la main
+  const GAIN = Math.log(M_TOUR) / (F_PLEIN * DT / 1000 * .8);
+
+  // ---- Hasard : jamais deux parties identiques (GRAINE) ----
+  const hasard = (graine) => () => { graine = graine + 0x6D2B79F5 | 0; let t = Math.imul(graine ^ graine >>> 15, 1 | graine); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+  const alea = hasard(GRAINE * 7919 + 13);
+  const entre = (a, b) => a + alea() * (b - a);
+  const choisir = (l) => l[Math.floor(alea() * l.length)];
+  const borne = (v, a, b) => Math.max(a, Math.min(b, v));
+  const ARC = ["#E0453F", "#F08A1C", "#F2B90F", "#2E9E57", "#3FB8E8", "#B05BE0"];
+  const ZONE_DOREE = 1 + GRAINE % 3;      // la zone où arrive le banc de poissons dorés
+  const MORENES = alea() < .5;            // pour le 2e gros : surtout des morenes, ou surtout des pez dientón
+  const JEFE_COUL = [["#1E2448", "#3A4275", "#7FF0FF"], ["#3A1E48", "#6B3F7A", "#FFB0F0"], ["#13343A", "#2C5E66", "#B8FF7A"]][GRAINE % 3];
+  const hex = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  const melangeCoul = (a, b, k) => { const A = hex(a), B = hex(b); return `rgb(${A.map((v, i) => Math.round(v + (B[i] - v) * k)).join(",")})`; };
+
+  // ---- Sons (jamais de son d'échec) ----
+  const GAMME = [784, 880, 988, 1046, 1175, 1318, 1568, 1760];
+  const sonBouchee = (n) => { const i = Math.min(n - 1, GAMME.length - 1); note(330, 170, .07, .13, "triangle"); setTimeout(() => note(GAMME[i], GAMME[i] * 1.4, .09, .08), 40); };
+  const sonRevanche = () => { bruitFiltre(500, 1.2, .25, .9); note(180, 90, .2, .25, "triangle"); [659, 880, 1175].forEach((f, i) => setTimeout(() => note(f, f * 1.5, .14, .1), 100 + i * 70)); };
+  const sonEvolution = () => [523, 659, 784, 1046, 1318].forEach((f, i) => setTimeout(() => note(f, f * 1.02, .2, .12), i * 90));
+  const sonGrave = (v = .2) => { note(110, 70, .7, v, "triangle"); setTimeout(() => note(92, 60, .7, v * .9, "triangle"), 500); };
+  const sonFanfare = () => { bruitFiltre(400, 1, .4, 1); [523, 659, 784, 1046, 784, 1046, 1318, 1568].forEach((f, i) => setTimeout(() => note(f, f * 1.01, .18, .13), i * 110)); };
+  const sonZap = () => { note(1400, 300, .12, .06, "square"); setTimeout(() => note(1200, 400, .1, .05, "square"), 70); };
+  const sonEncre = () => bruitFiltre(300, .8, .35, .9);
+  const sonZone = () => { bruitFiltre(900, 1, .6, .5); [392, 523, 659].forEach((f, i) => setTimeout(() => note(f, f, .25, .08), i * 140)); };
+
+  // ---- Toile ----
+  const toile = $("toile"), g = toile.getContext("2d");
+  let L = 1, H = 1;
+  function dimensionner() {
+    const dpr = Math.min(devicePixelRatio || 1, 2), t = $("terrain");
+    L = t.clientWidth; H = t.clientHeight;
+    toile.width = L * dpr; toile.height = H * dpr; g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  addEventListener("resize", dimensionner);
+
+  // ---- État ----
+  const A = animalN(IDEES.heros.n), NOM = IDEES.heros.nom.charAt(0).toUpperCase() + IDEES.heros.nom.slice(1);
+  let fini = false;
+  const cam = { x: 0, y: 0, z: 1.6 };
+  const heros = { x: 0, y: 0, vx: 0, vy: 0, m: 1, invul: 0, recul: 0, rot: 0, vers: 1, croque: 0, niveau: 0, t: 0, lent: 0, charge: 0, cdCharge: 0,
+    sprite: imageSure(spriteAnimal(IDEES.heros.n)), rond: imageSure(imgAnimal(IDEES.heros.n)), imgs: EVOLUTIONS.map((s) => (s ? imageSure(s) : null)) };
+  const rayonDe = (m) => R0 * Math.sqrt(m);
+  const hr = () => rayonDe(heros.m);
+  let ents = [], pops = [], anneaux = [], machoires = [], taches = [], cristaux = [];
+  const ambiance = [];
+  const eclats = new Eclats();
+  const doigt = { actif: false, x: 0, y: 0 };
+  let aTouche = false, tJeu = 0, tour = 0, m0 = 1, debutTour = 0;
+  let zone = 0, zonePrec = 0, zoneT = 99, sombra = null, ouvertureEtape = 0;
+  let jefe = null, jefeMange = false, jefeVaincu = false, festin = false;
+  let bouchees = 0, ralenti = 0, secousse = 0, voile = 0, frenesi = 0, comboN = 0, dernierCombo = -9999;
+  let prochainDanger = 7000, prochainRevanche = 0, prochainSpawn = 0, prochainSpecial = 0, premiereRevanche = true, yeuxT = 5;
+  const annonces = new Set();
+  // la progression d'une descente (0 → 1). Dans une longue partie, les 15 premières secondes vont vite : la promesse du jeu arrive tôt.
+  const prog = () => {
+    const t = tJeu - debutTour;
+    if (tour > 0 || DT <= 75000) return t / DT;
+    return t < OUVERTURE ? .2 * t / OUVERTURE : .2 + .8 * (t - OUVERTURE) / (DT - OUVERTURE);
+  };
+  const dernierTour = () => tour >= NB_TOURS - 1;
+  const mCible = (p) => m0 * Math.pow(M_TOUR, Math.min(p, 1) / F_PLEIN);
+  const plancher = () => (tour === 0 ? SEUILS[heros.niveau] : m0);
+  const echelle = () => Math.sqrt(m0);
+  const bulle = (txt, ms = 2200, or = false) => messageJeu($("bulle"), txt, ms, or);
+  const pop = (x, y, txt, c = "#fff", taille = 22) => pops.push({ x, y, txt, c, taille, t: 0 });
+  const aJefe = (nom) => (nom.startsWith("el ") ? "al " + nom.slice(3) : "a " + nom);
+
+  // ---- Le doigt : le requin va vers lui (la caméra le garde au centre) ----
+  const posDoigt = (e) => { const r = toile.getBoundingClientRect(); doigt.x = e.clientX - r.left; doigt.y = e.clientY - r.top; };
+  toile.addEventListener("pointerdown", (e) => {
+    doigt.actif = true; posDoigt(e); try { toile.setPointerCapture(e.pointerId); } catch {}
+    if (!aTouche) { aTouche = true; try { audio().resume?.(); } catch {} dire(IDEES.consigne); }
+  });
+  toile.addEventListener("pointermove", (e) => { if (doigt.actif) posDoigt(e); });
+  ["pointerup", "pointercancel", "lostpointercapture"].forEach((t) => toile.addEventListener(t, () => (doigt.actif = false)));
+
+  // ---- Création des bêtes ----
+  const vueR = () => .5 * Math.hypot(L, H) / cam.z;
+  function placeAutour(dans) {
+    const R = vueR();
+    const cap = Math.hypot(heros.vx, heros.vy) > 5 && alea() < .6 ? Math.atan2(heros.vy, heros.vx) + entre(-1.3, 1.3) : entre(0, 6.283);
+    const d = dans ? entre(R * .35, R * .85) : entre(R * 1.05, R * 1.3);
+    return [heros.x + Math.cos(cap) * d, heros.y + Math.sin(cap) * d];
+  }
+  function nouvelle(type, r, x, y, extra = {}) {
+    const e = Object.assign({ type, r, x, y, vx: 0, vy: 0, cap: entre(0, 6.283), t: entre(0, 10), f: alea() < .5 ? 1 : -1, repos: 0, chasse: 0, peur: false, etaitDanger: false, alpha: 0, vit: entre(.8, 1.2) }, extra);
+    ents.push(e); return e;
+  }
+  function creerProie(dans = false, dore = false, sp = choisir(ZONES[zone].proies)) {
+    const [x, y] = placeAutour(dans);
+    return nouvelle("proie", hr() * entre(.28, .5), x, y, { sp, dore: dore || (festin && alea() < .4) });
+  }
+  function creerBanc(cx, cy, cap, n, dore = false, sp = choisir(ZONES[zone].proies)) {
+    for (let i = 0; i < n; i++) {
+      const k = i / n, e = nouvelle("proie", hr() * entre(.26, .34), cx + Math.cos(cap + 1.57) * Math.sin(k * 6.28) * hr() * 1.4 - Math.cos(cap) * k * hr() * 7, cy + Math.sin(cap + 1.57) * Math.sin(k * 6.28) * hr() * 1.4 - Math.sin(cap) * k * hr() * 7, { sp, dore, banc: 1, cap });
+      e.alpha = .3;
+    }
+  }
+  function creerGros(tier, peur = false) {
+    const q = alea(), ok = (k, autre) => (ANI_OK(k) ? k : autre);
+    const esp = tier === 0 ? (q < .6 ? ok("delfin", "barracuda") : "barracuda")
+      : tier === 2 ? (q < .7 ? ok("orca", "calamar") : "calamar")
+      : q < .35 ? ok("pulpo", "dienton") : q < .7 ? ok("narval", "morena") : (MORENES ? "morena" : "dienton");
+    const [x, y] = placeAutour(esp === "morena"); // la morena ne bouge pas : son trou apparaît près de lui
+    const e = nouvelle("gros", TIERS[tier] * echelle() * entre(.97, 1.03), x, y, { esp, tier, peur, mode: "erre", mt: 0, ext: 0, cd: 1, dirA: 0 });
+    e.etaitDanger = !peur && e.r > hr() * 1.05;
+    return e;
+  }
+  function creerJefe() {
+    const R = vueR(), cap = entre(0, 6.283);
+    jefe = nouvelle("jefe", R_JEFE * echelle(), heros.x + Math.cos(cap) * R * 1.1, heros.y + Math.sin(cap) * R * 1.1);
+    jefe.rBase = jefe.r; jefe.etaitDanger = true; jefe.nomT = 3.5;
+    sonGrave(); vibrer(80);
+    bulle(IDEES.jefe.charAt(0).toUpperCase() + IDEES.jefe.slice(1) + "!", 3000, true);
+    dire(IDEES.jefeArrive(IDEES.jefe));
+  }
+
+  // ---- Les 15 premières secondes : écrites à la main, pareilles à chaque partie ----
+  function ouverture() {
+    if (tour > 0) return;
+    const s = tJeu / 1000;
+    if (ouvertureEtape === 0) { // un banc de sardines arrive droit sur lui : bouchées en rafale
+      ouvertureEtape = 1;
+      creerBanc(heros.x + vueR() * .55, heros.y - hr() * .5, Math.PI, 12, false, ZONES[0].proies[2]);
+      for (let i = 0; i < 4; i++) creerProie(true);
+      bulle(IDEES.geste, 3200);
+    } else if (ouvertureEtape === 1 && s > 4.2) { // une ombre géante passe en dessous : la promesse du jefe
+      ouvertureEtape = 2;
+      sombra = { t: 0, dur: 5.5 };
+      sonGrave(.16); vibrer(40);
+      bulle(IDEES.sombra, 2600); dire(IDEES.sombra);
+    } else if (ouvertureEtape === 2 && s > 7.5) { // un barracuda le repère : il fuit… puis le mange 10 s plus tard
+      ouvertureEtape = 3;
+      const e = creerGros(0); const cap = Math.atan2(heros.vy, heros.vx || 1) + .9;
+      e.x = heros.x + Math.cos(cap) * vueR() * .75; e.y = heros.y + Math.sin(cap) * vueR() * .75;
+      prochainDanger = tJeu + 6000;
+    }
+  }
+
+  // ---- Les zones ----
+  function changerZone(z) {
+    zonePrec = zone; zone = z; zoneT = 0;
+    bulle(IDEES.zones[z], 2600, true); dire(IDEES.zonesDit[z]); sonZone();
+    for (let i = 0; i < 18; i++) eclats.jaillir(Math.random() * L, H + 10, "rgba(255,255,255,.7)", 1, 1.6, .6);
+    const cap = entre(0, 6.283);
+    creerBanc(heros.x + Math.cos(cap) * vueR() * .8, heros.y + Math.sin(cap) * vueR() * .8, cap + Math.PI, 10, z === ZONE_DOREE);
+    if (z === ZONE_DOREE) setTimeout(() => !fini && bulle("¡Peces de oro!", 2000, true), 2700);
+  }
+
+  // ---- Grandir ----
+  function grandir(facteur) {
+    const cible = mCible(prog());
+    // en avance sur le rythme : il grandit beaucoup moins (le jefe ne doit pas tomber trop tôt)
+    const rattrapage = heros.m > cible * 1.2 && !jefe ? .2 : Math.pow(borne(cible / heros.m, .35, 3), 1.2);
+    heros.m *= Math.exp(GAIN * facteur * rattrapage);
+    if (jefeMange && dernierTour()) heros.m = Math.min(heros.m, m0 * M_TOUR * 3);
+    while (tour === 0 && heros.niveau < 3 && heros.m >= SEUILS[heros.niveau + 1]) evoluer();
+  }
+  function evoluer() {
+    heros.niveau++;
+    ralenti = 1.1; heros.invul = Math.max(heros.invul, 1.6);
+    anneaux.push({ t: 0 });
+    sonEvolution(); vibrer(90);
+    const [sx, sy] = ecran(heros.x, heros.y);
+    eclats.jaillir(sx, sy, "#FFD34D", 26, 1.1); eclats.jaillir(sx, sy, "#FFFFFF", 14, 1.2);
+    bulle(`¡Nivel ${heros.niveau + 1}!`, 2400, true);
+    dire(IDEES.evolution(NOM));
+    majBouton();
+    setTimeout(() => { if (!fini) { const t = IDEES.nouveauPouvoir(IDEES.pouvoirs[heros.niveau]); bulle(t, 2600, true); dire(t); } }, 2600);
+  }
+
+  // ---- Manger ----
+  const bouche = () => { const v = Math.hypot(heros.vx, heros.vy), R = hr(); return v > 20 ? [heros.x + heros.vx / v * R * 1.05, heros.y + heros.vy / v * R * 1.05] : [heros.x + heros.vers * R * 1.05, heros.y]; };
+  function manger(e) {
+    if (e.type === "gros" && ANI[e.esp]) mordre(e); else e.mort = true;
+    chargerPouvoir(e.pluie ? 0 : e.type === "gros" ? .3 : e.type === "jefe" ? 0 : .1); // ~10 bouchées ; la pluie de l'Ola dorada ne recharge pas
+    const [sx, sy] = ecran(e.x, e.y), [bx, by] = bouche();
+    heros.croque = .16; bouchees++;
+    machoires.push({ x: bx, y: by, t: 0, r: hr() * .7 });
+    compteurPop($("total"), bouchees, $("nb"));
+    comboN = tJeu - dernierCombo < 1300 ? comboN + 1 : 1; dernierCombo = tJeu;
+    if (comboN === 5 && frenesi <= 0) { frenesi = 4; bulle(IDEES.frenesi, 1800, true); dire(IDEES.frenesi); sonEvolution(); vibrer(50); }
+    if (e.type === "proie" || e.type === "globo") {
+      sonBouchee(comboN);
+      eclats.jaillir(sx, sy, e.dore ? "#FFD34D" : (e.sp?.c || "#FFD23F"), 6, .6, .7);
+      pop(e.x, e.y, e.dore ? "+2" : comboN % 5 === 0 ? `¡x${comboN}!` : comboN >= 3 ? "+1" : (alea() < .22 ? choisir(IDEES.bouchees) : "+1"), e.dore || comboN % 5 === 0 ? "#FFD34D" : "#fff", comboN % 5 === 0 ? 28 : 20);
+      grandir(e.dore ? 2 : e.type === "globo" ? 2.5 : 1);
+    } else if (e.type === "gros") {
+      sonRevanche(); vibrer(60); secousse = DOUX ? 0 : .3; ralenti = .45;
+      ARC.forEach((c) => eclats.jaillir(sx, sy, c, 5, 1));
+      pop(e.x, e.y - e.r, IDEES.revanche, "#FFD34D", 30);
+      if (premiereRevanche) { premiereRevanche = false; dire(IDEES.revanche); }
+      grandir(4);
+    } else mangerJefe(e, sx, sy);
+  }
+  function mordre(e) { // CROC… « ¡Ay! » : il rapetisse, un pansement, et il s'enfuit tout petit
+    e.mordu = 2.4; e.r *= .45; e.peur = true; e.mareo = 0; e.mode = "erre";
+    pop(e.x, e.y - e.r * 2, choisir(IDEES.mordu), "#FFFFFF", 24);
+  }
+
+  // ---- Le pouvoir : la jauge se remplit en mangeant, le bouton brille, un pouvoir par transformation ----
+  const ICONES_P = [
+    '<svg viewBox="0 0 44 44"><path d="M4 12h36l-4 9-4-7-4 9-4-9-4 9-4-9-4 7zM4 32h36l-4-9-4 7-4-9-4 9-4-9-4 9-4-7z" fill="#fff" stroke="#1E2A44" stroke-width="2" stroke-linejoin="round"/></svg>',
+    '<svg viewBox="0 0 44 44" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round"><path d="M22 22a3 3 0 1 1 3-3 7 7 0 0 1-7 7 11 11 0 0 1-11-11M22 22a3 3 0 1 0-3 3 7 7 0 0 0 7-7 11 11 0 0 0 11 11"/></svg>',
+    '<svg viewBox="0 0 44 44"><path d="M22 3l9 14-9 24-9-24z" fill="#BFF4FF" stroke="#fff" stroke-width="2.5" stroke-linejoin="round"/><path d="M13 17h18M22 3v38" stroke="#5CC9F2" stroke-width="2"/></svg>',
+    '<svg viewBox="0 0 44 44"><path d="M5 30l4-18 8 9 5-13 5 13 8-9 4 18z" fill="#FFD34D" stroke="#fff" stroke-width="2.5" stroke-linejoin="round"/><path d="M4 37c6-4 12 4 18 0s12 4 18 0" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round"/></svg>',
+  ];
+  let pouvoirCharge = 0, pouvoirBloque = 0, pouvoirPret = false, premierPret = true, torbellino = 0, ondes = [];
+  function majBouton() {
+    const b = $("pouvoir"); b.style.setProperty("--c", pouvoirCharge);
+    b.classList.toggle("pret", pouvoirPret);
+    if (b.dataset.niv !== String(heros.niveau)) { b.dataset.niv = heros.niveau; $("icone").innerHTML = ICONES_P[heros.niveau]; $("nomPouvoir").textContent = IDEES.pouvoirs[heros.niveau].replace(/[¡!]/g, ""); }
+  }
+  function chargerPouvoir(k) {
+    if (pouvoirPret || !k || tJeu < pouvoirBloque) return; // un petit temps de repos après chaque pouvoir
+    if (tour === 0 && tJeu < 5000) k *= .4; // la rafale de sardines du début ne le remplit pas d'un coup
+    pouvoirCharge = Math.min(1, pouvoirCharge + k);
+    if (pouvoirCharge >= 1) {
+      pouvoirPret = true; [784, 1046, 1318].forEach((f, i) => setTimeout(() => note(f, f * 1.2, .12, .1), i * 80)); vibrer(40);
+      bulle(IDEES.pret, 1600, true); dire(premierPret ? IDEES.pretToque : IDEES.pret); premierPret = false;
+    }
+    majBouton();
+  }
+  function lancerPouvoir() {
+    const b = $("pouvoir");
+    if (fini) return;
+    if (!pouvoirPret) { b.classList.remove("non"); void b.offsetWidth; b.classList.add("non"); return; } // pas encore : il bouge un peu, sans son
+    pouvoirPret = false; pouvoirCharge = 0; pouvoirBloque = tJeu + 3500; majBouton();
+    try { audio().resume?.(); } catch {}
+    const k = heros.niveau, nom = IDEES.pouvoirs[k], R = hr(), VW = vitesseMax();
+    bulle(nom, 1600, true); dire(nom); vibrer(70); sonEvolution();
+    const [sx, sy] = ecran(heros.x, heros.y);
+    if (k === 0) { // Supermordisco : il fonce sur un ennemi (même un peu plus gros que lui) et le croque
+      let cible = null, bd = vueR() * 1.1;
+      for (const e of ents) { if (e.mort || e.mordu || e.type !== "gros" || e.r > R * 1.45) continue; const [cx, cy] = contact(e), d = Math.hypot(cx - heros.x, cy - heros.y); if (d < bd) { bd = d; cible = [cx, cy]; } }
+      const v = Math.hypot(heros.vx, heros.vy), [dx, dy] = cible ? [cible[0] - heros.x, cible[1] - heros.y] : v > 10 ? [heros.vx, heros.vy] : [heros.vers, 0], d = Math.hypot(dx, dy) || 1;
+      heros.super = .75; heros.invul = Math.max(heros.invul, .9); heros.charge = .4;
+      heros.vx = dx / d * VW * 2.4; heros.vy = dy / d * VW * 2.4;
+      eclats.jaillir(sx, sy, "#FFFFFF", 12, 1);
+    } else if (k === 1) { // Torbellino : il aspire les petits, repousse les gros
+      torbellino = 2.6; heros.invul = Math.max(heros.invul, 2.6);
+    } else { // Rayo de cristal / Ola dorada : une onde, tous les ennemis à l'écran sont étourdis (et mangeables)
+      ondes.push({ t: 0, c: k === 2 ? "#7FF0FF" : "#FFD34D" });
+      secousse = DOUX ? 0 : .25;
+      for (const e of ents) if ((e.type === "gros" || e.type === "jefe") && !e.mordu && Math.hypot(e.x - heros.x, e.y - heros.y) < vueR() * 1.1) { e.mareo = e.type === "jefe" ? (k === 3 ? 2.5 : 2) : (k === 3 ? 4.5 : 3.5); e.chasse = 0; if (e.mode) e.mode = "erre"; }
+      if (k === 3) for (let i = 0; i < 8; i++) creerProie(true, true).pluie = true;
+    }
+  }
+  $("pouvoir").addEventListener("pointerdown", (e) => { e.preventDefault(); e.stopPropagation(); if (!aTouche) { aTouche = true; try { audio().resume?.(); } catch {} } lancerPouvoir(); });
+  function mangerJefe(e, sx, sy) {
+    jefeMange = true; jefeVaincu = true; jefe = null;
+    heros.m *= 1.5;
+    sonFanfare(); vibrer(160); secousse = DOUX ? 0 : .6; ralenti = 1.4;
+    for (let i = 0; i < 3; i++) ARC.forEach((c) => eclats.jaillir(sx, sy, c, 8, 1.4, 1.2));
+    anneaux.push({ t: 0 });
+    pop(e.x, e.y - e.r, "¡ÑAAAM!", "#FFD34D", 38);
+    bulle(IDEES.rey, 3500, true); dire(IDEES.rey);
+    heros.invul = 2;
+    if (dernierTour()) {
+      if (MODE_PARTIE) setTimeout(finirPartie, 3800);
+      else setTimeout(() => { if (!fini) { festin = true; ents.forEach((x) => { if (x.type === "gros") x.peur = true; }); dire(IDEES.festin); bulle(IDEES.festin, 2600, true); } }, 3600);
+    }
+  }
+  function recracher(e, cx, cy) {
+    // il n'est jamais mangé : recraché, un peu plus petit (jamais sous son niveau), intouchable 3 s
+    const dx = heros.x - cx, dy = heros.y - cy, d = Math.hypot(dx, dy) || 1, VW = vitesseMax();
+    heros.vx = dx / d * VW * 1.7; heros.vy = dy / d * VW * 1.7; heros.recul = .45; heros.charge = 0;
+    heros.invul = 3; comboN = 0;
+    if (e.type === "jefe") pop(cx, cy - e.r * 1.1, choisir(IDEES.jefeTropGros), "#FFFFFF", 26);
+    else { heros.m = Math.max(heros.m * .85, plancher()); pop(cx, cy - e.r, choisir(IDEES.recrache), "#FFFFFF", 24); }
+    e.repos = 3.5; e.chasse = 0; e.cap = Math.atan2(-dy, -dx); if (e.esp === "barracuda") e.mode = "erre";
+    SONS_JEU.boing(); vibrer(35);
+    const [sx, sy] = ecran(heros.x, heros.y);
+    eclats.jaillir(sx, sy, "#FFFFFF", 8, .7, .6);
+  }
+  function piquer(e) { // la méduse : ça chatouille et ça ralentit un instant, rien de plus
+    if (heros.lent > 0 || heros.invul > 0 || frenesi > 0) return;
+    heros.lent = 1.3; pop(heros.x, heros.y - hr(), IDEES.medusa, "#BFF4FF", 26); sonZap(); vibrer(25);
+    const dx = e.x - heros.x, dy = e.y - heros.y, d = Math.hypot(dx, dy) || 1;
+    e.vx += dx / d * vitesseMax() * .6; e.vy += dy / d * vitesseMax() * .6;
+  }
+  function rebond(e, cx, cy) { // le poisson-ballon gonflé : on rebondit dessus
+    if (e.cdRebond > 0) return; e.cdRebond = .6;
+    const dx = heros.x - cx, dy = heros.y - cy, d = Math.hypot(dx, dy) || 1, VW = vitesseMax();
+    heros.vx = dx / d * VW * 1.3; heros.vy = dy / d * VW * 1.3; heros.recul = .3; heros.charge = 0;
+    pop(cx, cy - e.r * 1.6, IDEES.globo, "#FFE27A", 24); SONS_JEU.boing();
+  }
+  function encrer(e) {
+    e.encre = true; e.fuite = .8; sonEncre(); pop(e.x, e.y - e.r, IDEES.encre, "#E7D9FF", 26);
+    const n = DOUX ? 3 : 6;
+    for (let i = 0; i < n; i++) taches.push({ x: entre(.15, .85) * L, y: entre(.2, .8) * H, r: entre(40, 80), t: 0, pts: Array.from({ length: 9 }, () => entre(.75, 1.25)) });
+  }
+
+  // ---- Les descentes (pause longue : plusieurs descentes, chacune avec son jefe) ----
+  function nouveauTour() {
+    tour++; m0 = heros.m; debutTour = tJeu;
+    jefe = null; jefeMange = false; annonces.clear();
+    ents = []; voile = 1; zonePrec = zone; zone = 0; zoneT = 0;
+    for (let i = 0; i < 9; i++) creerProie(true);
+    prochainDanger = tJeu + 3000;
+    bulle(IDEES.nouvelleDescente, 2600, true); dire(IDEES.nouvelleDescente);
+  }
+
+  // ---- Fin ----
+  const phraseFin = () => `${NOM} se ha comido ${bouchees} ${bouchees === 1 ? "pez" : "peces"}${jefeVaincu ? ` y ${aJefe(IDEES.jefe)}` : ""}.`;
+  function finirPartie() { if (fini) return; fini = true; finPartie({ titre: IDEES.rey, phrase: phraseFin() }); }
+  function terminer() { if (fini) return; fini = true; finDePause($("fin"), IDEES.rey, phraseFin()); }
+
+  // ---- Caméra ----
+  const zoomCible = () => Math.min(L, H) * .085 * (1 + .9 * borne(Math.log(heros.m / m0) / Math.log(M_TOUR * 1.6), 0, 1)) / hr();
+  const ecran = (x, y) => [(x - cam.x) * cam.z + L / 2, (y - cam.y) * cam.z + H / 2];
+  const vitesseMax = () => Math.min(L, H) * .68 / cam.z;
+
+  // ---- Départ : pas de menu, il est déjà dans l'eau ----
+  $("titre").textContent = IDEES.nom;
+  document.title = IDEES.nom.replace(/[¡!]/g, "") + "";
+  dimensionner();
+  majBouton();
+  cam.z = zoomCible();
+  for (let i = 0; i < 16; i++) ambiance.push(particule(true));
+  if (MODE_PARTIE) setTimeout(() => { if (!fini) finirPartie(); }, DJ * 1.35); // filet : la partie se termine toujours
+  else minuteurJeu({ barre: $("barre"), bandeau: $("ultimo"), surFin: terminer });
+  if (MODE_PARTIE) dire(IDEES.consigne); // dans la séance, la voix passe déjà
+  let avant = performance.now();
+  requestAnimationFrame(boucle);
+
+  function boucle(now) {
+    if (fini && !MODE_PARTIE) return;
+    const dtR = Math.min(.05, (now - avant) / 1000); avant = now;
+    if (!fini) tJeu += dtR * 1000;
+    const ts = ralenti > 0 ? .35 : 1; ralenti = Math.max(0, ralenti - dtR);
+    const dt = dtR * ts;
+    if (!fini) logique(dt, dtR);
+    dessiner(dtR);
+    if (MODE_PARTIE) $("barre").style.transform = `scaleX(${Math.max(.02, 1 - tJeu / DJ)})`;
+    if (!fini) requestAnimationFrame(boucle);
+  }
+
+  // l'endroit qui touche : la tête de la morena, le reste au centre
+  const contact = (e) => (e.esp === "morena" ? [e.x + Math.cos(e.dirA) * e.ext * e.r * 2.4, e.y + Math.sin(e.dirA) * e.ext * e.r * 2.4] : [e.x, e.y]);
+  const rayonGlobo = (e) => (e.gonfle > 0 ? e.r * (1 + .9 * Math.min(1, (2.6 - e.gonfle) * 6, e.gonfle * 3)) : e.r);
+
+  function logique(dt, dtR) {
+    const p = prog(), R = hr(), VW = vitesseMax();
+    heros.t += dt; zoneT += dtR;
+    const z = zoneDe(p); if (z !== zone) changerZone(z);
+    ouverture();
+    if (sombra) { sombra.t += dtR; if (sombra.t > sombra.dur) sombra = null; }
+
+    // le requin suit le doigt (avant le premier toucher, il nage tout seul vers la droite)
+    let tvx = 0, tvy = 0;
+    if (doigt.actif) {
+      const [hx, hy] = ecran(heros.x, heros.y), dx = doigt.x - hx, dy = doigt.y - hy, d = Math.hypot(dx, dy);
+      if (d > 6) { const k = Math.min(1, d / (Math.min(L, H) * .28)); tvx = dx / d * VW * k; tvy = dy / d * VW * k; }
+    } else if (!aTouche) { tvx = VW * .3; tvy = Math.sin(heros.t * 1.2) * VW * .08; }
+    const mult = (heros.lent > 0 ? .45 : 1) * (frenesi > 0 ? 1.25 : 1);
+    tvx *= mult; tvy *= mult;
+    // il fonce tout seul sur une proie juste devant lui (la « charge »)
+    heros.cdCharge = Math.max(0, heros.cdCharge - dt);
+    if (heros.charge > 0) heros.charge -= dt;
+    else if (!heros.cdCharge && heros.recul <= 0 && heros.lent <= 0) {
+      const v = Math.hypot(heros.vx, heros.vy), ux = v > 20 ? heros.vx / v : heros.vers, uy = v > 20 ? heros.vy / v : 0;
+      let cible = null, bd = R * 3;
+      for (const e of ents) {
+        if (e.mort || e.alpha < .6 || !mangeablePar(e, R)) continue;
+        const [cx, cy] = contact(e), dx = cx - heros.x, dy = cy - heros.y, d = Math.hypot(dx, dy);
+        if (d < bd && (dx * ux + dy * uy) / (d || 1) > .35) { bd = d; cible = [dx / d, dy / d]; }
+      }
+      if (cible) { heros.vx = cible[0] * VW * 1.6 * mult; heros.vy = cible[1] * VW * 1.6 * mult; heros.charge = .2; heros.cdCharge = .45; }
+    }
+    if (heros.charge <= 0) {
+      const lissage = 1 - Math.exp(-dt * (heros.recul > 0 ? 1.5 : doigt.actif ? 7 : aTouche ? .5 : 2.5)); // doigt levé (pour le bouton) : il garde son élan
+      heros.vx += (tvx - heros.vx) * lissage; heros.vy += (tvy - heros.vy) * lissage;
+    }
+    heros.x += heros.vx * dt; heros.y += heros.vy * dt;
+    heros.recul = Math.max(0, heros.recul - dt); heros.invul = Math.max(0, heros.invul - dtR); heros.lent = Math.max(0, heros.lent - dtR);
+    heros.croque = Math.max(0, heros.croque - dtR); frenesi = Math.max(0, frenesi - dtR);
+    heros.super = Math.max(0, (heros.super || 0) - dt); torbellino = Math.max(0, torbellino - dt);
+    for (const o of ondes) o.t += dtR; ondes = ondes.filter((o) => o.t < .9);
+    if (Math.abs(heros.vx) > VW * .08) heros.vers = heros.vx > 0 ? 1 : -1;
+    const vise = borne(Math.atan2(heros.vy, Math.abs(heros.vx) + 1e-3), -.55, .55) * heros.vers;
+    heros.rot += (vise - heros.rot) * (1 - Math.exp(-dt * 6));
+
+    // caméra
+    cam.x += (heros.x - cam.x) * (1 - Math.exp(-dtR * 6)); cam.y += (heros.y - cam.y) * (1 - Math.exp(-dtR * 6));
+    cam.z += (zoomCible() - cam.z) * (1 - Math.exp(-dtR * (voile > 0 ? 3 : 1.5)));
+
+    // le jefe, et la descente suivante
+    if (!jefe && !jefeMange && p >= F_JEFE) creerJefe();
+    if (jefeMange && !dernierTour() && p >= 1) nouveauTour();
+
+    prochainSpawn -= dtR;
+    if (prochainSpawn <= 0) { prochainSpawn = .25; peupler(p, R); }
+
+    const aim = frenesi > 0 || heros.niveau >= 3 || festin;
+    for (const e of ents) {
+      if (e.mort) continue;
+      if (e.mordu) { // mordu pour rire : il s'enfuit tout petit, puis s'en va
+        e.mordu -= dtR; e.t += dt;
+        const ddx = e.x - heros.x, ddy = e.y - heros.y, dd = Math.hypot(ddx, ddy) || 1;
+        e.x += ddx / dd * VW * 1.2 * dt; e.y += ddy / dd * VW * 1.2 * dt; e.f = ddx > 0 ? 1 : -1;
+        e.alpha = Math.min(1, e.mordu / .6); if (e.mordu <= 0) e.mort = true;
+        continue;
+      }
+      e.mareo = Math.max(0, (e.mareo || 0) - dt);
+      e.t += dt; e.alpha = Math.min(1, e.alpha + dtR * 3); e.repos = Math.max(0, e.repos - dt);
+      e.cd = Math.max(0, (e.cd || 0) - dt); e.cdRebond = Math.max(0, (e.cdRebond || 0) - dt);
+      const dx = heros.x - e.x, dy = heros.y - e.y, d = Math.hypot(dx, dy) || 1;
+      let vx = 0, vy = 0;
+      const danger = (e.type === "gros" || e.type === "jefe") && e.r > R * 1.05 && !(e.mareo > 0) && !(heros.super > 0 && e.type === "gros" && e.r < R * 1.45);
+      const mangeable = mangeablePar(e, R);
+
+      if (e.type === "proie") {
+        if (e.banc) { vx = Math.cos(e.cap) * VW * .28; vy = Math.sin(e.cap) * VW * .28 + Math.sin(e.t * 3) * VW * .05; }
+        else {
+          e.cap += (alea() - .5) * dt * 3;
+          vx = Math.cos(e.cap) * VW * .2 * e.vit; vy = Math.sin(e.cap) * VW * .2 * e.vit;
+          if (d < R * 3 && !aim) { vx = -dx / d * VW * .32 * e.vit; vy = -dy / d * VW * .32 * e.vit; }
+        }
+        if (aim && d < R * (frenesi > 0 || festin ? 6 : 4.2)) { vx = dx / d * VW * .6; vy = dy / d * VW * .6; }
+        if (torbellino > 0 && d < R * 7) { vx = dx / d * VW * 1.3 - dy / d * VW * .4; vy = dy / d * VW * 1.3 + dx / d * VW * .4; }
+      } else if (e.type === "medusa") {
+        vx = Math.cos(e.cap) * VW * .05; vy = -Math.max(0, Math.sin(e.t * 2)) * VW * .18 + VW * .04;
+      } else if (e.type === "globo") {
+        e.gonfle = Math.max(0, (e.gonfle || 0) - dt);
+        if (!e.gonfle && !e.cd && d < R * 3.2 && e.r < R * .95) { e.gonfle = 2.6; e.cd = 4.5; note(300, 700, .25, .1, "triangle"); }
+        if (e.gonfle > 0) { vx = 0; vy = 0; }
+        else if (d < R * 3.5) { vx = -dx / d * VW * .2; vy = -dy / d * VW * .2; }
+        else { e.cap += (alea() - .5) * dt * 2; vx = Math.cos(e.cap) * VW * .12; vy = Math.sin(e.cap) * VW * .12; }
+      } else if (e.type === "jefe") {
+        jefeLogique(e, p, R); vx = e.jvx; vy = e.jvy;
+      } else {
+        // un gros que l'on vient de dépasser prend peur : c'est la revanche
+        vx = vy = 0;
+        if (e.esp === "morena") morenaLogique(e, danger, d, dx, dy, dt);
+        else if (danger && CHARGEURS.includes(e.esp)) [vx, vy] = barracudaLogique(e, d, dx, dy, dt, VW);
+        else if (e.mode !== "erre") e.mode = "erre";
+        if (e.esp === "morena" || (danger && CHARGEURS.includes(e.esp))) { /* déjà fait */ }
+        else if (danger && !e.repos && heros.invul <= 0 && d < vueR() * .85 && e.chasse < 2.6) {
+          e.chasse += dt; vx = dx / d * VW * .44 * e.vit; vy = dy / d * VW * .44 * e.vit;
+          if (e.chasse >= 2.6) { e.repos = 3.5; e.chasse = 0; e.cap = Math.atan2(-dy, -dx); }
+        } else if (e.peur || !danger) {
+          if ((e.esp === "calamar" || e.esp === "pulpo") && e.peur && !e.encre && d < R * 3) encrer(e);
+          const fuite = e.fuite > 0 ? .9 : e.t > 6 ? .38 : .52; e.fuite = Math.max(0, (e.fuite || 0) - dt);
+          if (e.peur) { vx = -dx / d * VW * fuite + Math.cos(e.t * 3) * VW * .1; vy = -dy / d * VW * fuite + Math.sin(e.t * 2.3) * VW * .1; if (d > vueR() * .8) { vx *= .2; vy *= .2; } }
+          else { e.cap += (alea() - .5) * dt * 1.6; vx = Math.cos(e.cap) * VW * .18; vy = Math.sin(e.cap) * VW * .18; }
+        } else { e.cap += (alea() - .5) * dt * 1.6; vx = Math.cos(e.cap) * VW * .18; vy = Math.sin(e.cap) * VW * .18; }
+      }
+      if (e.type === "gros" || e.type === "jefe") {
+        if (e.etaitDanger && !danger && mangeable && !e.peur && !(e.mareo > 0) && !(heros.super > 0)) {
+          e.peur = true;
+          const cle = e.type + (e.tier ?? "j");
+          if (!annonces.has(cle)) { annonces.add(cle); bulle(e.type === "jefe" ? IDEES.jefeMangeable : IDEES.peur, 2400, true); dire(IDEES.plusGrand); }
+        }
+        if (danger) e.peur = false;
+        if (!(e.mareo > 0) && !(heros.super > 0)) e.etaitDanger = danger;
+        if (e.mareo > 0) { vx = vy = 0; if (e.type === "jefe") { e.jvx = e.jvy = 0; } }
+        else if (torbellino > 0 && danger && d < R * 4.5) { vx = -dx / d * VW * 1.1; vy = -dy / d * VW * 1.1; }
+      }
+      if (e.esp !== "morena") {
+        const l = 1 - Math.exp(-dt * (e.mode === "charge" ? 10 : 4));
+        e.vx += (vx - e.vx) * l; e.vy += (vy - e.vy) * l;
+        e.x += e.vx * dt; e.y += e.vy * dt;
+        if (Math.abs(e.vx) > 2) e.f = e.vx > 0 ? 1 : -1;
+        if ((e.type === "gros" || e.type === "jefe") && e.peur) e.f = dx > 0 ? -1 : 1;
+        if (danger && (e.chasse > 0 || e.mode === "aviso")) e.f = dx > 0 ? 1 : -1;
+      } else e.f = Math.cos(e.dirA) >= 0 ? 1 : -1;
+
+      // contacts
+      if (e.alpha < .6) continue;
+      const [cx, cy] = contact(e), dc = Math.hypot(heros.x - cx, heros.y - cy);
+      if (e.type === "medusa") { if (dc < (R + e.r) * .7) piquer(e); continue; }
+      if (e.type === "globo" && e.gonfle > 0) { if (dc < (R + rayonGlobo(e)) * .78) rebond(e, cx, cy); continue; }
+      if (mangeable && (dc < R + e.r * .45 || (e.esp === "morena" && d < R + e.r * .6))) { manger(e); continue; }
+      if (danger && heros.invul <= 0 && (e.esp !== "morena" || e.ext > .35) && dc < (R + e.r * (e.esp === "morena" ? .5 : 1)) * .72) { recracher(e, cx, cy); continue; }
+      if (!mangeable && !danger && dc < (R + e.r) * .8 && e.type !== "proie") { heros.vx += (heros.x - cx) / dc * VW * .6; heros.vy += (heros.y - cy) / dc * VW * .6; }
+    }
+    const loin = vueR() * 2.3;
+    ents = ents.filter((e) => !e.mort && (e.type === "jefe" || Math.hypot(e.x - heros.x, e.y - heros.y) < loin));
+    for (const q of pops) q.t += dtR;
+    pops = pops.filter((q) => q.t < 1.1);
+    for (const a of anneaux) a.t += dtR;
+    anneaux = anneaux.filter((a) => a.t < 1);
+    for (const m of machoires) m.t += dtR;
+    machoires = machoires.filter((m) => m.t < .35);
+    for (const t of taches) t.t += dtR;
+    taches = taches.filter((t) => t.t < 2.4);
+    secousse = Math.max(0, secousse - dtR); voile = Math.max(0, voile - dtR * 1.4);
+  }
+
+  function mangeablePar(e, R) {
+    if (e.mordu) return false;
+    if (e.type === "proie") return true;
+    if (e.type === "medusa") return false;
+    if (e.type === "globo") return !(e.gonfle > 0) && e.r < R * .95;
+    if (e.type === "gros" && e.mareo > 0) return e.r < R * (heros.niveau >= 3 ? 1.7 : 1.4); // étourdi : on peut le croquer
+    if (e.type === "gros" && heros.super > 0) return e.r < R * 1.45;                     // Supermordisco
+    return e.r < R * .95;
+  }
+
+  function barracudaLogique(e, d, dx, dy, dt, VW) {
+    // il prévient (« ! », il tremble), puis il fonce tout droit : on peut l'esquiver
+    if (e.mode === "erre") {
+      e.cap += (alea() - .5) * dt * 1.6;
+      if (d < vueR() * .7 && !e.repos && heros.invul <= 0) { e.mode = "aviso"; e.mt = .8; }
+      return [Math.cos(e.cap) * VW * .2, Math.sin(e.cap) * VW * .2];
+    }
+    e.mt -= dt;
+    if (e.mode === "aviso") { e.dirA = Math.atan2(dy, dx); if (e.mt <= 0) { e.mode = "charge"; e.mt = .75; } return [0, 0]; }
+    if (e.mt <= 0) { e.mode = "erre"; e.repos = 2.8; e.cap = e.dirA + Math.PI; }
+    return [Math.cos(e.dirA) * VW * 1.45, Math.sin(e.dirA) * VW * 1.45];
+  }
+  function morenaLogique(e, danger, d, dx, dy, dt) {
+    // elle vit dans son trou : elle sort d'un coup quand il passe trop près, puis rentre
+    if (danger) {
+      if (e.ext <= .05 && !e.cd && d < e.r * 4.6 && heros.invul <= 0) { e.sort = 1.1; e.dirA = Math.atan2(dy, dx); e.cd = 2.6; pop(e.x, e.y - e.r, IDEES.murena, "#FFFFFF", 22); note(500, 200, .12, .12, "triangle"); }
+      if (e.sort > 0) { e.sort -= dt; e.ext = Math.min(1, e.ext + dt * 5); } else e.ext = Math.max(0, e.ext - dt * 2.2);
+    } else { e.dirA += (Math.atan2(dy, dx) - e.dirA) * .05; e.ext = .3 + .08 * Math.sin(e.t * 5); }
+  }
+
+  function jefeLogique(e, p, R) {
+    const VW = vitesseMax(), dx = heros.x - e.x, dy = heros.y - e.y, d = Math.hypot(dx, dy) || 1;
+    e.nomT = Math.max(0, (e.nomT || 0) - 1 / 60);
+    // au début, le jefe grandit avec lui (« el jefe también come ») : il reste plus gros
+    if (p < F_SUIT) { e.r = Math.max(e.r, R * 1.08); e.rBase = e.r; }
+    // fatigué : il rétrécit pour que la partie finisse toujours par sa victoire
+    if (p > F_FATIGUE) { const k = borne((p - F_FATIGUE) / (F_REDDITION - F_FATIGUE - .01), 0, 1); e.r = Math.min(e.r, e.rBase + (R * .85 - e.rBase) * k); e.fatigue = true; }
+    const danger = e.r > R * 1.05;
+    if (p > F_REDDITION && !danger) {
+      e.jvx = dx / d * VW * 1.4; e.jvy = dy / d * VW * 1.4; e.rendu = true; // il vient se faire manger
+      if (!e.ditRendu) { e.ditRendu = true; pop(e.x, e.y - e.r * 1.1, IDEES.jefeFatigue, "#FFFFFF", 26); }
+    } else if (danger) {
+      if (d > vueR() * .9) { e.jvx = dx / d * VW * .5; e.jvy = dy / d * VW * .5; }
+      else if (!e.repos && heros.invul <= 0) { e.jvx = dx / d * VW * .36; e.jvy = dy / d * VW * .36; }
+      else { e.jvx = Math.cos(e.t * .7) * VW * .15; e.jvy = Math.sin(e.t * .9) * VW * .15; }
+    } else {
+      e.jvx = -dx / d * VW * .22; e.jvy = -dy / d * VW * .22; // il a peur, mais il est lent
+      if (d > vueR() * .55) { e.jvx *= -1.6; e.jvy *= -1.6; } // et il ne s'enfuit jamais loin
+    }
+  }
+
+  function peupler(p, R) {
+    const V = vueR();
+    const proches = ents.filter((e) => Math.hypot(e.x - heros.x, e.y - heros.y) < V * 1.5);
+    const compte = (f) => proches.filter(f).length;
+    const retard = heros.m < mCible(p) * .8;
+    if (compte((e) => e.type === "proie") < (festin ? 16 : retard ? 13 : 10)) creerProie(alea() < (retard ? .7 : .45));
+    if (festin && alea() < .3) creerProie(false, true);
+    if (jefe || festin || jefeMange || (tour === 0 && tJeu < 7500)) return; // pendant le jefe, rien d'autre ne le dérange
+    const gros = proches.filter((e) => e.type === "gros");
+    const dangers = gros.filter((e) => e.r > R * 1.05).length, peureux = gros.filter((e) => e.r < R * .95).length;
+    if (tJeu >= prochainDanger && dangers < (p < .25 ? 1 : 2)) {
+      const i = TIERS.findIndex((r) => r * echelle() > R * 1.08 && r * echelle() < R * 2.6);
+      if (i >= 0) { creerGros(i); prochainDanger = tJeu + DT * .07; }
+    }
+    if (tJeu >= prochainRevanche && peureux < (p < .3 ? 1 : 2)) {
+      const i = TIERS.map((r, k) => [r * echelle(), k]).filter(([r]) => r < R * .95 && r > R * .42).map(([, k]) => k).pop();
+      if (i !== undefined) { creerGros(i, true); prochainRevanche = tJeu + DT * .06; }
+    }
+    // les bêtes de la zone : poisson-ballon (algues, grotte), méduses (grotte, abysse)
+    if (tJeu >= prochainSpecial) {
+      prochainSpecial = tJeu + 1500;
+      if ((zone === 1 || zone === 2) && compte((e) => e.type === "globo") < 1) { const [x, y] = placeAutour(false); nouvelle("globo", R * entre(.6, .75), x, y, { gonfle: 0 }); }
+      if (zone >= 2 && compte((e) => e.type === "medusa") < (zone === 2 ? 3 : 2)) { const [x, y] = placeAutour(alea() < .3); nouvelle("medusa", R * entre(.45, .6), x, y, { teinte: alea() < .5 ? "#FF9AD5" : "#8FE8FF" }); }
+    }
+  }
+
+  // =====================================================================
+  // DESSIN
+  // =====================================================================
+  const nuit = () => { const k = Math.min(1, zoneT / 2.5); return ZONES[zonePrec].nuit + (ZONES[zone].nuit - ZONES[zonePrec].nuit) * k; };
+
+  function dessiner(dtR) {
+    g.save();
+    if (secousse > 0) g.translate((Math.random() - .5) * 12 * secousse, (Math.random() - .5) * 12 * secousse);
+    fond();
+    cristaux = [];
+    const k = Math.min(1, zoneT / 2.5);
+    if (k < 1) decor(zonePrec, 1 - k);
+    decor(zone, k);
+    obscurite();
+    for (const c of cristaux) cristal(c);
+    suite();
+    if (sombra) dessinerSombra();
+    const tri = ents.filter((e) => !e.mort).sort((a, b) => a.r - b.r), R = hr();
+    for (const e of tri) if (e.r < R) bete(e, R);
+    dessinerHeros();
+    for (const e of tri) if (e.r >= R) bete(e, R);
+    for (const m of machoires) dessinerMachoire(m);
+    for (const o of ondes) { const [sx, sy] = ecran(heros.x, heros.y); g.save(); g.globalAlpha = 1 - o.t / .9; g.strokeStyle = o.c; g.lineWidth = 14 * (1 - o.t / .9); g.shadowColor = o.c; g.shadowBlur = 16; g.beginPath(); g.arc(sx, sy, o.t / .9 * Math.max(L, H) * .9, 0, 7); g.stroke(); g.restore(); }
+    for (const a of anneaux) {
+      const [sx, sy] = ecran(heros.x, heros.y);
+      g.strokeStyle = `rgba(255,220,90,${1 - a.t})`; g.lineWidth = 8 * (1 - a.t);
+      g.beginPath(); g.arc(sx, sy, R * cam.z * (1 + a.t * 3), 0, 7); g.stroke();
+    }
+    eclats.dessiner(g, dtR, { gravite: .1 });
+    for (const q of pops) {
+      const [sx, sy] = ecran(q.x, q.y);
+      g.save(); g.globalAlpha = Math.min(1, (1.1 - q.t) * 3); g.font = `900 ${q.taille}px Lexend, system-ui`; g.textAlign = "center";
+      const y = sy - q.t * 50, s = 1 + Math.max(0, .25 - q.t) * 1.6, demi = g.measureText(q.txt).width / 2 + 6;
+      g.translate(borne(sx, demi, L - demi), borne(y, q.taille, H - 50)); g.scale(s, s);
+      g.lineWidth = 5; g.strokeStyle = "rgba(30,42,68,.75)"; g.strokeText(q.txt, 0, 0); g.fillStyle = q.c; g.fillText(q.txt, 0, 0);
+      g.restore();
+    }
+    for (const t of taches) tache(t);
+    particules(dtR);
+    g.restore();
+    flecheJefe();
+    jauge();
+    if (!aTouche) indiceDoigt();
+    if (voile > 0) { g.fillStyle = `rgba(10,30,70,${Math.min(1, voile) * .85})`; g.fillRect(0, 0, L, H); }
+  }
+
+  function fond() {
+    const k = Math.min(1, zoneT / 2.5), a = ZONES[zonePrec], b = ZONES[zone];
+    const gr = g.createLinearGradient(0, 0, 0, H);
+    gr.addColorStop(0, melangeCoul(a.fond[0], b.fond[0], k)); gr.addColorStop(1, melangeCoul(a.fond[1], b.fond[1], k));
+    g.fillStyle = gr; g.fillRect(-20, -20, L + 40, H + 40);
+    const ray = a.rayons + (b.rayons - a.rayons) * k;
+    if (ray > 0) {
+      g.save(); g.globalAlpha = ray; g.fillStyle = "#fff";
+      const t = performance.now() / 1000;
+      for (let i = 0; i < 5; i++) {
+        const x = ((i * 137 - cam.x * cam.z * .15) % (L + 220) + L + 220) % (L + 220) - 110, w = 30 + 20 * Math.sin(t * .5 + i);
+        g.beginPath(); g.moveTo(x, -10); g.lineTo(x + w, -10); g.lineTo(x - 70 + w, H); g.lineTo(x - 140, H); g.fill();
+      }
+      g.restore();
+    }
+  }
+
+  // la nuit des grottes : tout s'assombrit, sauf autour du requin (les bêtes, elles, restent bien visibles)
+  function obscurite() {
+    const n = nuit(); if (n <= .01) return;
+    const [sx, sy] = ecran(heros.x, heros.y), R = hr() * cam.z;
+    const gr = g.createRadialGradient(sx, sy, R * 2, sx, sy, R * 7.5);
+    gr.addColorStop(0, "rgba(0,4,16,0)"); gr.addColorStop(1, `rgba(0,4,16,${n})`);
+    g.fillStyle = gr; g.fillRect(-20, -20, L + 40, H + 40);
+  }
+
+  // en bas de l'écran, on devine déjà la zone suivante… et parfois des yeux qui brillent
+  function suite() {
+    if (zone >= 3 || jefe) return;
+    const nz = ZONES[zone + 1], gr = g.createLinearGradient(0, H * .72, 0, H);
+    gr.addColorStop(0, "rgba(0,0,0,0)"); gr.addColorStop(1, nz.fond[1] + "99");
+    g.fillStyle = gr; g.fillRect(-20, H * .72, L + 40, H * .3);
+    const maintenant = performance.now() / 1000; yeuxT -= maintenant - (suite.avant || maintenant); suite.avant = maintenant;
+    if (yeuxT < 0) { yeuxT = entre(6, 10); }
+    if (yeuxT < 1.4) {
+      const a = Math.sin(yeuxT / 1.4 * Math.PI), x = L * (.25 + (GRAINE % 5) * .12), y = H - 46;
+      g.save(); g.globalAlpha = a * .85; g.fillStyle = "#FFE27A"; g.shadowColor = "#FFE27A"; g.shadowBlur = 10;
+      [-9, 9].forEach((o) => { g.beginPath(); g.ellipse(x + o, y, 4.5, 2.2 + a, 0, 0, 7); g.fill(); });
+      g.restore();
+    }
+  }
+
+  const hashCase = (i, j, z) => { const h = Math.imul(i, 73856093) ^ Math.imul(j, 19349663) ^ Math.imul(tour * 4 + z + 1, 83492791) ^ GRAINE; return hasard(h)(); };
+  function decor(z, alpha) {
+    if (alpha <= .02 || !(cam.z > 1e-6) || !isFinite(cam.x + cam.y)) return; // jamais de boucle sans fin
+    const C = 170 * echelle(), x0 = cam.x - L / 2 / cam.z, x1 = cam.x + L / 2 / cam.z, y0 = cam.y - H / 2 / cam.z, y1 = cam.y + H / 2 / cam.z;
+    g.save(); g.globalAlpha = alpha;
+    for (let i = Math.floor(x0 / C) - 1; i <= Math.floor(x1 / C) + 1; i++) for (let j = Math.floor(y0 / C) - 1; j <= Math.floor(y1 / C) + 1; j++) {
+      const h = hashCase(i, j, z), h2 = hashCase(j + 999, i - 7, z);
+      if (h < .22) continue;
+      const wx = (i + h2) * C, wy = (j + (h * 7 % 1)) * C, [sx, sy] = ecran(wx, wy), s = 26 * echelle() * cam.z * (.7 + h2 * .7);
+      if (sx < -s * 4 || sx > L + s * 4 || sy < -s * 5 || sy > H + s * 4) continue;
+      const k = ZONES[z].decor[Math.floor(h * 97) % ZONES[z].decor.length];
+      if (k === "cristal") { cristaux.push({ x: sx, y: sy, s, h, a: alpha }); continue; }
+      unDecor(k, sx, sy, s, h);
+    }
+    g.restore();
+  }
+  function unDecor(k, x, y, s, h) {
+    g.save(); g.translate(x, y);
+    const t = performance.now() / 1000;
+    if (k === "coral") {
+      g.strokeStyle = h > .5 ? "#FF7FA8" : "#FF9B5E"; g.lineWidth = s * .2; g.lineCap = "round";
+      const br = (x0, y0, a, l, n) => { if (!n) return; const x1 = x0 + Math.cos(a) * l, y1 = y0 + Math.sin(a) * l; g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke(); br(x1, y1, a - .5, l * .7, n - 1); br(x1, y1, a + .5, l * .7, n - 1); };
+      br(0, s * .8, -1.57, s * .7, 3);
+    } else if (k === "anemona") {
+      g.strokeStyle = h > .6 ? "#C77DFF" : "#FF8FB1"; g.lineWidth = s * .14; g.lineCap = "round";
+      for (let q = -3; q <= 3; q++) { g.beginPath(); g.moveTo(q * s * .12, s * .4); g.quadraticCurveTo(q * s * .3 + Math.sin(t * 2 + q) * s * .2, -s * .2, q * s * .35 + Math.sin(t * 2 + q) * s * .3, -s * .6); g.stroke(); }
+      g.fillStyle = "#7A3E9D"; g.beginPath(); g.ellipse(0, s * .45, s * .5, s * .2, 0, 0, 7); g.fill();
+    } else if (k === "roca") {
+      g.fillStyle = "#4E7590"; g.globalAlpha *= .8;
+      g.beginPath(); g.ellipse(0, 0, s * 1.1, s * .7, h, 0, 7); g.fill();
+      g.fillStyle = "rgba(255,255,255,.15)"; g.beginPath(); g.ellipse(-s * .3, -s * .25, s * .45, s * .22, h, 0, 7); g.fill();
+    } else if (k === "arena") {
+      g.fillStyle = "rgba(255,240,200,.28)"; g.beginPath(); g.ellipse(0, 0, s * 2, s * .8, h, 0, 7); g.fill();
+      g.fillStyle = "rgba(255,255,255,.5)"; g.beginPath(); g.arc(s * .5, -s * .1, s * .12, 0, 7); g.fill();
+    } else if (k === "kelp") {
+      g.strokeStyle = h > .6 ? "#2E7D4F" : "#3C9A5F"; g.lineCap = "round";
+      for (let b = -1; b <= 1; b++) {
+        g.lineWidth = s * .28; g.beginPath(); g.moveTo(b * s * .4, s * 1.2);
+        for (let q = 1; q <= 7; q++) g.lineTo(b * s * .4 + Math.sin(t * 1.2 + q * .7 + b) * s * .3 * q / 4, s * 1.2 - q * s * .6);
+        g.stroke();
+        g.fillStyle = "#4FB06E"; for (let q = 2; q <= 6; q += 2) { g.beginPath(); g.ellipse(b * s * .4 + Math.sin(t * 1.2 + q * .7 + b) * s * .3 * q / 4 + s * .2, s * 1.2 - q * s * .6, s * .25, s * .1, .6, 0, 7); g.fill(); }
+      }
+    } else if (k === "tabla") {
+      g.rotate(h * 3 - 1.5); g.fillStyle = "#6E4B2A"; g.fillRect(-s * 1.5, -s * .25, s * 3, s * .5);
+      g.fillStyle = "#4E331B"; g.fillRect(-s * 1.5, -s * .06, s * 3, s * .08);
+      g.fillStyle = "#B8B0A0"; [-1.2, 1.2].forEach((p) => { g.beginPath(); g.arc(p * s, 0, s * .06, 0, 7); g.fill(); });
+    } else if (k === "sombre") {
+      g.fillStyle = "#0E2235"; g.beginPath(); for (let q = 0; q < 7; q++) { const a = q / 7 * 6.283 + h, rr = s * (1.1 + ((h * (q + 3) * 13) % 1) * .6); g.lineTo(Math.cos(a) * rr * 1.4, Math.sin(a) * rr); } g.closePath(); g.fill();
+    }
+    g.restore();
+  }
+  function cristal(c) {
+    const t = performance.now() / 1000, col = c.h > .5 ? "#7FF0FF" : "#D6A8FF";
+    g.save(); g.translate(c.x, c.y); g.globalAlpha = c.a * (.75 + .25 * Math.sin(t * 2 + c.h * 9));
+    g.fillStyle = col; g.shadowColor = col; g.shadowBlur = c.s * .8;
+    [[0, 1, -.2], [-.45, .7, -.6], [.45, .6, .5]].forEach(([dx, l, a]) => { g.save(); g.translate(dx * c.s, c.s * .5); g.rotate(a); g.beginPath(); g.moveTo(-c.s * .18, 0); g.lineTo(0, -c.s * l * 1.3); g.lineTo(c.s * .18, 0); g.closePath(); g.fill(); g.restore(); });
+    g.restore();
+  }
+
+  function particule(partout) { return { x: Math.random() * L, y: partout ? Math.random() * H : H + 10, v: .3 + Math.random() * .7, s: 2 + Math.random() * 4, p: Math.random() * 6 }; }
+  function particules(dtR) {
+    const n = DOUX ? 6 : ambiance.length, sombre = nuit() > .3;
+    for (let i = 0; i < n; i++) {
+      const q = ambiance[i]; q.p += dtR;
+      q.y -= q.v * (sombre ? 12 : 45) * dtR; q.x += Math.sin(q.p * 2) * 12 * dtR;
+      if (q.y < -10) Object.assign(q, particule(false));
+      if (sombre && i % 2) { g.fillStyle = `rgba(150,240,255,${.35 + .35 * Math.sin(q.p * 3)})`; g.beginPath(); g.arc(q.x, q.y, q.s * .5, 0, 7); g.fill(); }
+      else { g.strokeStyle = "rgba(255,255,255,.5)"; g.lineWidth = 1.5; g.beginPath(); g.arc(q.x, q.y, q.s, 0, 7); g.stroke(); }
+    }
+  }
+
+  // ---- L'ombre géante de l'ouverture : on devine le jefe ----
+  function dessinerSombra() {
+    const k = sombra.t / sombra.dur, x = -L * .8 + k * L * 2.6, y = H * .74 + Math.sin(k * 3) * 12, R = H * .2;
+    g.save(); g.globalAlpha = Math.sin(k * Math.PI) * .55;
+    abisal(x, y, R, 1, sombra.t, "neutre", false, true);
+    g.restore();
+  }
+
+  // ---- Le requin ----
+  function dessinerHeros() {
+    const [sx, sy] = ecran(heros.x, heros.y), R = hr() * cam.z, t = heros.t;
+    const evo = heros.imgs[heros.niveau];
+    const img = evo && imagePrete(evo) ? evo : heros.sprite;
+    const asp = imagePrete(img) ? img.naturalWidth / img.naturalHeight : 1;
+    const h = 2.5 * R / Math.sqrt(Math.max(.6, asp) / 1.05);
+    g.save();
+    if (heros.invul > 0 && !ralenti) g.globalAlpha = DOUX ? .55 : (Math.floor(heros.invul * 8) % 2 ? .35 : .9);
+    if (frenesi > 0 || heros.niveau >= 1) {
+      const coul = frenesi > 0 ? "rgba(255,200,40," : ["", "rgba(127,211,255,", "rgba(255,211,77,", "rgba(255,255,255,"][heros.niveau];
+      const gr = g.createRadialGradient(sx, sy, R * .4, sx, sy, R * (frenesi > 0 ? 2.3 : 1.9));
+      gr.addColorStop(0, coul + (frenesi > 0 ? ".7)" : ".5)")); gr.addColorStop(1, coul + "0)");
+      g.fillStyle = gr; g.beginPath(); g.arc(sx, sy, R * 2.3, 0, 7); g.fill();
+      if (heros.niveau >= 3 && g.createConicGradient) {
+        const cg = g.createConicGradient(t * 2, sx, sy); ARC.concat(ARC[0]).forEach((c, i) => cg.addColorStop(i / 6, c));
+        g.strokeStyle = cg; g.lineWidth = 4; g.globalAlpha *= .7; g.beginPath(); g.arc(sx, sy, R * 1.45, 0, 7); g.stroke(); g.globalAlpha /= .7;
+      }
+    }
+    // traînée quand il fonce
+    if ((heros.charge > 0 || frenesi > 0) && !DOUX) {
+      g.strokeStyle = "rgba(255,255,255,.5)"; g.lineWidth = 2;
+      const v = Math.hypot(heros.vx, heros.vy) || 1;
+      for (let i = -1; i <= 1; i++) { g.beginPath(); g.moveTo(sx - heros.vx / v * R * 1.2 + i * R * .3, sy - heros.vy / v * R * 1.2 + i * R * .3); g.lineTo(sx - heros.vx / v * R * 2.2 + i * R * .3, sy - heros.vy / v * R * 2.2 + i * R * .3); g.stroke(); }
+    }
+    if (heros.niveau >= 2 && Math.hypot(heros.vx, heros.vy) > 10 && Math.random() < .5 && !DOUX) eclats.jaillir(sx - heros.vers * R, sy, "#FFE27A", 1, .25, .5);
+    const s = 1 + (heros.croque > 0 ? Math.sin((1 - heros.croque / .16) * Math.PI) * .14 : 0);
+    g.translate(sx, sy + Math.sin(t * 3) * R * .05); g.rotate(heros.rot); g.scale(s, s);
+    g.shadowColor = "rgba(20,30,60,.55)"; g.shadowBlur = 4;
+    if (!dessinerSprite(g, img, A.n, 0, h * .5, h, { vers: heros.vers, ombre: false })) dessinerRond(g, heros.rond, A, 0, 0, R, { anneau: "#fff" });
+    g.shadowBlur = 0;
+    if (heros.niveau >= 3 && !(evo && imagePrete(evo))) couronne(heros.vers * R * .1, -h * .42, R * .45, t);
+    if (torbellino > 0) { // le tourbillon
+      g.save(); g.rotate(-heros.rot); g.strokeStyle = "rgba(200,245,255,.75)"; g.lineWidth = 3;
+      for (let i = 0; i < 3; i++) { const a = -t * 9 + i * 2.1; g.beginPath(); g.arc(0, 0, R * (1.5 + i * .5), a, a + 2.2); g.stroke(); }
+      g.restore();
+    }
+    if (heros.lent > 0) { // la méduse l'a chatouillé : petits éclairs
+      g.strokeStyle = "#BFF4FF"; g.lineWidth = 2.5;
+      for (let i = 0; i < 3; i++) { const a = t * 9 + i * 2.1; g.beginPath(); g.moveTo(Math.cos(a) * R * 1.1, Math.sin(a) * R * .8); g.lineTo(Math.cos(a + .3) * R * .8, Math.sin(a + .3) * R * 1); g.lineTo(Math.cos(a + .6) * R * 1.2, Math.sin(a + .6) * R * .9); g.stroke(); }
+    }
+    g.restore();
+    if (comboN >= 2 && tJeu - dernierCombo < 1300) {
+      g.save(); g.font = `900 ${16 + Math.min(comboN, 8) * 2}px Lexend, system-ui`; g.textAlign = "center"; g.lineWidth = 4; g.strokeStyle = "rgba(30,42,68,.8)"; g.fillStyle = "#FFD34D";
+      g.strokeText("x" + comboN, sx - heros.vers * R * 1.3, sy - R * 1.1); g.fillText("x" + comboN, sx - heros.vers * R * 1.3, sy - R * 1.1); g.restore();
+    }
+  }
+  function couronne(x, y, w, t) {
+    g.save(); g.translate(x, y + Math.sin(t * 3) * 2);
+    g.fillStyle = "#FFD34D"; g.strokeStyle = "#B8860B"; g.lineWidth = 2;
+    g.beginPath(); g.moveTo(-w, 0); g.lineTo(-w, -w * .7); g.lineTo(-w * .5, -w * .3); g.lineTo(0, -w * .9); g.lineTo(w * .5, -w * .3); g.lineTo(w, -w * .7); g.lineTo(w, 0); g.closePath(); g.fill(); g.stroke();
+    g.fillStyle = "#E0453F"; g.beginPath(); g.arc(0, -w * .25, w * .14, 0, 7); g.fill();
+    g.restore();
+  }
+  // CROC : deux rangées de dents qui se ferment devant la gueule
+  function dessinerMachoire(m) {
+    const [sx, sy] = ecran(m.x, m.y), r = m.r * cam.z, k = Math.min(1, m.t / .12), a = 1 - Math.max(0, (m.t - .15) / .2);
+    g.save(); g.globalAlpha = a; g.fillStyle = "#fff"; g.strokeStyle = "rgba(30,42,68,.6)"; g.lineWidth = 1.5;
+    const ouvert = r * .9 * (1 - k);
+    [-1, 1].forEach((sens) => {
+      const y0 = sy + sens * (ouvert + r * .05);
+      g.beginPath(); g.moveTo(sx - r, y0);
+      for (let i = 0; i < 5; i++) { const x = sx - r + (i + .5) * r * .4; g.lineTo(x, y0 - sens * r * .35); g.lineTo(x + r * .2, y0); }
+      g.closePath(); g.fill(); g.stroke();
+    });
+    g.restore();
+  }
+
+  // ---- Les bêtes ----
+  function bete(e, Rh) {
+    const [sx, sy] = ecran(e.x, e.y), R = e.r * cam.z, marge = R * (e.esp === "morena" ? 4 : 3);
+    if (sx < -marge || sx > L + marge || sy < -marge || sy > H + marge) return;
+    g.save(); g.globalAlpha = e.alpha;
+    if (e.type === "proie") proie(e, sx, sy, R);
+    else if (e.type === "medusa") medusa(e, sx, sy, R);
+    else if (e.type === "globo") globo(e, sx, sy, R, Rh);
+    else {
+      const mangeable = mangeablePar(e, Rh), danger = !mangeable && e.r > Rh * 1.05 && !(e.mareo > 0);
+      const humeur = mangeable || e.rendu ? "peur" : danger ? (e.repos ? "content" : "fache") : "neutre";
+      if (mangeable && e.esp !== "morena") anneauVert(sx, sy, R, e.t);
+      if (e.type === "jefe") {
+        abisal(sx, sy, R, e.f, e.t, humeur, e.fatigue, false);
+        if (e.nomT > 0 && !mangeable) {
+          g.font = "900 16px Lexend, system-ui"; g.textAlign = "center"; g.lineWidth = 4; g.strokeStyle = "rgba(30,42,68,.8)";
+          const demi = g.measureText(IDEES.jefe).width / 2 + 6, nx = borne(sx, demi, L - demi), ny = borne(sy - R * 1.6, 24, H - 60);
+          g.strokeText(IDEES.jefe, nx, ny); g.fillStyle = "#FFD34D"; g.fillText(IDEES.jefe, nx, ny);
+        }
+      } else if (ANI[e.esp]) sonAnimal(e, sx, sy, R, humeur);
+      else if (e.esp === "barracuda") barracuda(e, sx, sy, R, humeur);
+      else if (e.esp === "morena") morena(e, sx, sy, R, humeur, mangeable);
+      else if (e.esp === "calamar") monstre({ forme: "calamar", c: "#9B5DE5", c2: "#E2C6FF" }, sx, sy, R, e.f, e.t, humeur);
+      else monstre({ forme: "pez", c: "#7C6FD8", c2: "#C2BAF5", dents: 1 }, sx, sy, R, e.f, e.t, humeur);
+      if (e.mareo > 0) etourdi(sx, sy - R * 1.05, R, e.t);
+    }
+    g.restore();
+  }
+  // un de ses animaux en ennemi : son vrai sprite, avec des repères (aura sombre quand il chasse, sueur quand il a peur, pansement quand il est mordu)
+  function sonAnimal(e, x, y, R, humeur) {
+    const img = SPR_ENNEMIS[ANI[e.esp]], h = R * 2.3, tremble = e.mode === "aviso" ? Math.sin(e.t * 60) * R * .06 : 0;
+    g.save(); g.translate(x + tremble, y);
+    if (e.mode === "charge") { g.strokeStyle = "rgba(255,255,255,.55)"; g.lineWidth = 2; for (let i = -1; i <= 1; i++) { g.beginPath(); g.moveTo(-e.f * R * 1.6, i * R * .3); g.lineTo(-e.f * R * 2.8, i * R * .3); g.stroke(); } }
+    if (humeur === "fache" && !e.mordu) { g.shadowColor = "rgba(150,0,70,.9)"; g.shadowBlur = 14; }
+    else { g.shadowColor = "rgba(20,30,60,.5)"; g.shadowBlur = 4; }
+    if (!dessinerSprite(g, img, ANI[e.esp], 0, h * .5, h, { vers: e.f, ombre: false })) monstre({ forme: "pez", c: "#7C6FD8", c2: "#C2BAF5" }, 0, 0, R, e.f, e.t, humeur);
+    g.shadowBlur = 0;
+    if (humeur === "fache" && !e.mordu) { // le petit signe « fâché » au-dessus de la tête
+      g.strokeStyle = "#FF5A5A"; g.lineWidth = Math.max(2, R * .07); g.lineCap = "round";
+      const ax = e.f * R * .5, ay = -h * .45;
+      [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([a, b]) => { g.beginPath(); g.moveTo(ax + a * R * .08, ay + b * R * .22); g.quadraticCurveTo(ax + a * R * .08, ay + b * R * .08, ax + a * R * .22, ay + b * R * .08); g.stroke(); });
+    }
+    if (humeur === "peur" && !e.mordu) { g.save(); g.translate(0, -h * .1); sueur(R, e.t); g.restore(); }
+    if (e.mordu) { // le pansement
+      g.save(); g.rotate(.5); g.fillStyle = "#FFE3C2"; g.strokeStyle = "#C9A27A"; g.lineWidth = 1.5;
+      g.fillRect(-R * .45, -R * .14, R * .9, R * .28); g.strokeRect(-R * .45, -R * .14, R * .9, R * .28);
+      g.rotate(-1); g.fillRect(-R * .45, -R * .14, R * .9, R * .28); g.strokeRect(-R * .45, -R * .14, R * .9, R * .28); g.restore();
+    }
+    g.restore();
+    if (e.mode === "aviso") { g.font = `900 ${Math.max(26, R * .9)}px Lexend, system-ui`; g.textAlign = "center"; g.lineWidth = 5; g.strokeStyle = "rgba(30,42,68,.8)"; g.strokeText(IDEES.aviso, x, y - R * 1.3); g.fillStyle = "#FFD34D"; g.fillText(IDEES.aviso, x, y - R * 1.3); }
+  }
+  function etourdi(x, y, R, t) { // des étoiles qui tournent au-dessus de la tête
+    for (let i = 0; i < 3; i++) { const a = t * 5 + i * 2.1; etoile(x + Math.cos(a) * R * .55, y + Math.sin(a) * R * .18, Math.max(5, R * .14), "#FFE27A"); }
+  }
+  function anneauVert(x, y, R, t) { // « celui-là, tu peux le manger »
+    g.strokeStyle = `rgba(110,240,140,${.55 + .3 * Math.sin(t * 6)})`; g.lineWidth = Math.max(3, R * .08);
+    g.beginPath(); g.ellipse(x, y + R * .85, R * 1.25, R * .35, 0, 0, 7); g.stroke();
+  }
+  function lueur(x, y, r, c, a = .55) {
+    const gr = g.createRadialGradient(x, y, 0, x, y, r);
+    gr.addColorStop(0, c + Math.round(a * 255).toString(16).padStart(2, "0")); gr.addColorStop(1, c + "00");
+    g.fillStyle = gr; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill();
+  }
+
+  function oeil(x, y, r, humeur) {
+    g.fillStyle = "#fff"; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill();
+    g.strokeStyle = "rgba(0,0,0,.35)"; g.lineWidth = Math.max(1, r * .15); g.stroke();
+    const p = humeur === "peur" ? r * .32 : r * .5;
+    g.fillStyle = "#1E2A44"; g.beginPath(); g.arc(x + r * .3, y + (humeur === "peur" ? -r * .1 : 0), p, 0, 7); g.fill();
+    g.fillStyle = "#fff"; g.beginPath(); g.arc(x + r * .3 - p * .35, y - p * .4, p * .3, 0, 7); g.fill();
+  }
+  function sourcil(ex, ey, er, R) { g.strokeStyle = "#1E2A44"; g.lineWidth = Math.max(2, R * .09); g.lineCap = "round"; g.beginPath(); g.moveTo(ex - er * 1.1, ey - er * 1.3); g.lineTo(ex + er * 1.1, ey - er * .7); g.stroke(); }
+  function sueur(R, t) { g.fillStyle = "#8FD8FF"; for (let i = 0; i < 2; i++) { const gy = ((t * 1.5 + i * .5) % 1) * R * .6; g.beginPath(); g.arc(-R * .1 + i * R * .35, -R * .95 + gy, R * .09, 0, 7); g.fill(); } }
+  function dents(x0, y0, w, h, n, sens = 1) { g.fillStyle = "#fff"; for (let i = 0; i < n; i++) { const tx = x0 + i * w / n; g.beginPath(); g.moveTo(tx, y0); g.lineTo(tx + w / n / 2, y0 + sens * h); g.lineTo(tx + w / n, y0); g.fill(); } }
+
+  // le barracuda : long, argenté, la mâchoire en avant. Il prévient avant de foncer.
+  function barracuda(e, x, y, R, humeur) {
+    const t = e.t, tremble = e.mode === "aviso" ? Math.sin(t * 60) * R * .06 : 0;
+    g.save(); g.translate(x + tremble, y); g.scale(e.f, 1);
+    if (e.mode === "charge") { g.strokeStyle = "rgba(255,255,255,.55)"; g.lineWidth = 2; for (let i = -1; i <= 1; i++) { g.beginPath(); g.moveTo(-R * 2, i * R * .25); g.lineTo(-R * 3.2, i * R * .25); g.stroke(); } }
+    const bat = Math.sin(t * 10) * .25; g.lineWidth = Math.max(2, R * .06); g.strokeStyle = "rgba(0,0,0,.3)"; g.lineJoin = "round";
+    g.fillStyle = "#8FA6B8";
+    g.beginPath(); g.moveTo(-R * 1.5, 0); g.lineTo(-R * 2.05, -R * .5 + bat * R); g.lineTo(-R * 1.85, 0); g.lineTo(-R * 2.05, R * .5 + bat * R); g.closePath(); g.fill(); g.stroke();
+    g.beginPath(); g.moveTo(-R * .3, -R * .38); g.lineTo(-R * .05, -R * .8); g.lineTo(R * .2, -R * .38); g.fill(); g.stroke();
+    g.fillStyle = "#B9CBD8"; g.beginPath(); g.moveTo(R * 1.7, R * .05); g.quadraticCurveTo(R * .6, -R * .6, -R * 1.55, -R * .12); g.lineTo(-R * 1.55, R * .12); g.quadraticCurveTo(R * .6, R * .55, R * 1.75, R * .2); g.closePath(); g.fill(); g.stroke();
+    g.fillStyle = "rgba(60,80,100,.45)"; for (let i = 0; i < 5; i++) { g.beginPath(); g.ellipse(-R * 1 + i * R * .4, -R * .12, R * .07, R * .22, .2, 0, 7); g.fill(); }
+    if (humeur === "fache") dents(R * .9, R * .12, R * .75, -R * .16, 5);
+    oeil(R * 1.05, -R * .12, R * .17, humeur);
+    if (humeur === "fache") sourcil(R * 1.05, -R * .12, R * .17, R);
+    if (humeur === "peur") sueur(R, t);
+    g.restore();
+    if (e.mode === "aviso") { g.font = `900 ${Math.max(26, R * .9)}px Lexend, system-ui`; g.textAlign = "center"; g.lineWidth = 5; g.strokeStyle = "rgba(30,42,68,.8)"; g.strokeText(IDEES.aviso, x, y - R * .9); g.fillStyle = "#FFD34D"; g.fillText(IDEES.aviso, x, y - R * .9); }
+  }
+
+  // la morena : un trou dans la roche, et un long corps vert qui en sort d'un coup
+  function morena(e, x, y, R, humeur, mangeable) {
+    const t = e.t;
+    g.fillStyle = "#3D5566"; g.beginPath(); g.ellipse(x, y, R * 1.4, R * 1.05, 0, 0, 7); g.fill();
+    g.fillStyle = "#0B1622"; g.beginPath(); g.ellipse(x, y, R * .85, R * .6, 0, 0, 7); g.fill();
+    if (mangeable) anneauVert(x, y - R * .3, R, t);
+    const l = e.ext * R * 2.4, hx = x + Math.cos(e.dirA) * l, hy = y + Math.sin(e.dirA) * l;
+    if (e.ext > .03) {
+      g.strokeStyle = "#5E8C3A"; g.lineCap = "round"; g.lineWidth = R * .62;
+      const nx = -Math.sin(e.dirA), ny = Math.cos(e.dirA), o = Math.sin(t * 8) * R * .25 * e.ext;
+      g.beginPath(); g.moveTo(x, y); g.quadraticCurveTo((x + hx) / 2 + nx * o, (y + hy) / 2 + ny * o, hx, hy); g.stroke();
+      g.strokeStyle = "rgba(255,240,120,.35)"; g.lineWidth = R * .12; g.stroke();
+      g.save(); g.translate(hx, hy); g.rotate(e.dirA); if (Math.cos(e.dirA) < 0) g.scale(1, -1);
+      g.fillStyle = "#6FA244"; g.strokeStyle = "rgba(0,0,0,.3)"; g.lineWidth = Math.max(2, R * .05);
+      g.beginPath(); g.ellipse(0, 0, R * .6, R * .42, 0, 0, 7); g.fill(); g.stroke();
+      if (humeur === "fache") { g.fillStyle = "#5A1E2E"; g.beginPath(); g.moveTo(R * .62, 0); g.lineTo(R * .1, -R * .22); g.lineTo(R * .1, R * .22); g.closePath(); g.fill(); dents(R * .15, -R * .2, R * .45, R * .12, 3); dents(R * .15, R * .2, R * .45, -R * .12, 3); }
+      oeil(R * .1, -R * .25, R * .15, humeur);
+      if (humeur === "fache") sourcil(R * .1, -R * .25, R * .15, R);
+      g.restore();
+      if (humeur === "peur") { g.save(); g.translate(hx, hy); sueur(R * .7, t); g.restore(); }
+    }
+  }
+
+  // le poisson-ballon : petit et mignon, ou gonflé plein de piquants (on rebondit dessus)
+  function globo(e, x, y, R0, Rh) {
+    const R = rayonGlobo(e) * cam.z, gonfle = e.gonfle > 0, t = e.t;
+    g.save(); g.translate(x, y); g.scale(e.f, 1);
+    if (!gonfle && e.r < Rh * .95) anneauVert(0, 0, R, t);
+    g.lineWidth = Math.max(2, R * .05); g.strokeStyle = "rgba(0,0,0,.3)";
+    if (gonfle) { g.fillStyle = "#E8C547"; for (let i = 0; i < 14; i++) { const a = i / 14 * 6.283; g.beginPath(); g.moveTo(Math.cos(a - .12) * R * .95, Math.sin(a - .12) * R * .95); g.lineTo(Math.cos(a) * R * 1.3, Math.sin(a) * R * 1.3); g.lineTo(Math.cos(a + .12) * R * .95, Math.sin(a + .12) * R * .95); g.fill(); } }
+    g.fillStyle = "#FFD84D"; g.beginPath(); g.moveTo(-R * .85, 0); g.lineTo(-R * 1.25, -R * .35); g.lineTo(-R * 1.25, R * .35); g.closePath(); g.fill(); g.stroke();
+    g.beginPath(); g.ellipse(0, 0, R, R * (gonfle ? 1 : .85), 0, 0, 7); g.fill(); g.stroke();
+    g.fillStyle = "#FFF4C2"; g.beginPath(); g.ellipse(R * .1, R * .35, R * .65, R * .4, 0, 0, 7); g.fill();
+    g.fillStyle = "rgba(160,110,20,.4)"; [[-.4, -.4], [0, -.55], [-.2, -.15]].forEach(([a, b]) => { g.beginPath(); g.arc(a * R, b * R, R * .08, 0, 7); g.fill(); });
+    oeil(R * .4, -R * .25, R * .2, gonfle ? "fache" : "neutre");
+    if (gonfle) { sourcil(R * .4, -R * .25, R * .2, R); g.fillStyle = "#5A1E2E"; g.beginPath(); g.ellipse(R * .8, R * .1, R * .08, R * .12, 0, 0, 7); g.fill(); }
+    else { g.fillStyle = "#5A1E2E"; g.beginPath(); g.ellipse(R * .82, R * .08, R * .1, R * .07, 0, 0, 7); g.fill(); }
+    g.restore();
+  }
+
+  // la méduse : elle brille, elle flotte, elle chatouille (ralentit) mais ne fait jamais perdre
+  function medusa(e, x, y, R) {
+    const t = e.t, puls = 1 + Math.sin(t * 2) * .08, c = e.teinte;
+    lueur(x, y, R * 2.2, c, .35);
+    g.strokeStyle = c; g.lineWidth = Math.max(1.5, R * .07); g.lineCap = "round"; g.globalAlpha *= .85;
+    for (let i = -2; i <= 2; i++) { g.beginPath(); g.moveTo(x + i * R * .25, y); for (let q = 1; q <= 4; q++) g.lineTo(x + i * R * .25 + Math.sin(t * 3 + q + i) * R * .15, y + q * R * .38); g.stroke(); }
+    g.fillStyle = c; g.globalAlpha *= .75;
+    g.beginPath(); g.ellipse(x, y, R * .85 * puls, R * .7 / puls, 0, Math.PI, 0); g.closePath(); g.fill();
+    g.fillStyle = "rgba(255,255,255,.55)"; g.beginPath(); g.ellipse(x - R * .3, y - R * .4, R * .2, R * .1, -.4, 0, 7); g.fill();
+    g.fillStyle = "#1E2A44"; [-.25, .25].forEach((o) => { g.beginPath(); g.arc(x + o * R, y - R * .25, R * .07, 0, 7); g.fill(); });
+  }
+
+  // le pez dientón et le calamar (gros génériques)
+  function monstre(sp, x, y, R, f, t, humeur) {
+    g.save(); g.translate(x, y); g.scale(f, 1);
+    const ombre = "rgba(0,0,0,.3)", lw = Math.max(2, R * .06);
+    g.lineWidth = lw; g.strokeStyle = ombre; g.lineJoin = "round";
+    const bat = Math.sin(t * (humeur === "peur" ? 14 : 7)) * .22;
+    if (sp.forme === "calamar") {
+      g.strokeStyle = sp.c; g.lineCap = "round";
+      for (let i = 0; i < 6; i++) { g.lineWidth = R * .16; const y0 = (i - 2.5) * R * .18; g.beginPath(); g.moveTo(-R * .6, y0); g.quadraticCurveTo(-R * 1.2, y0 + Math.sin(t * 4 + i) * R * .3, -R * 1.8, y0 * 1.6 + Math.sin(t * 4 + i + 1) * R * .3); g.stroke(); }
+      g.lineWidth = lw; g.strokeStyle = ombre;
+      g.fillStyle = sp.c; g.beginPath(); g.ellipse(R * .1, 0, R * 1.05, R * .8, 0, 0, 7); g.fill(); g.stroke();
+      g.beginPath(); g.moveTo(R * .9, -R * .5); g.lineTo(R * 1.5, 0); g.lineTo(R * .9, R * .5); g.closePath(); g.fill(); g.stroke();
+      g.fillStyle = sp.c2; for (let i = 0; i < 4; i++) { g.beginPath(); g.arc(-R * .3 + i * R * .3, -R * .35 + (i % 2) * R * .2, R * .09, 0, 7); g.fill(); }
+    } else {
+      g.fillStyle = sp.c;
+      g.beginPath(); g.moveTo(-R * .9, 0); g.lineTo(-R * 1.55, -R * .65 + bat * R); g.lineTo(-R * 1.45, 0); g.lineTo(-R * 1.55, R * .65 + bat * R); g.closePath(); g.fill(); g.stroke();
+      g.beginPath(); g.moveTo(-R * .4, -R * .7); g.quadraticCurveTo(-R * .1, -R * 1.3, R * .35, -R * .75); g.closePath(); g.fill(); g.stroke();
+      g.beginPath(); g.ellipse(0, 0, R * 1.15, R * .85, 0, 0, 7); g.fill(); g.stroke();
+      g.fillStyle = sp.c2; g.beginPath(); g.ellipse(R * .15, R * .35, R * .8, R * .4, 0, 0, 7); g.fill();
+    }
+    const bx = R * .82, by = R * .2;
+    if (humeur === "fache") { g.fillStyle = "#5A1E2E"; g.beginPath(); g.ellipse(bx, by, R * .3, R * .22 + Math.abs(bat) * R * .2, 0, 0, 7); g.fill(); if (sp.dents) dents(bx - R * .26, by - R * .2, R * .52, R * .16, 3); }
+    else if (humeur === "peur") { g.fillStyle = "#5A1E2E"; g.beginPath(); g.ellipse(bx, by + R * .05, R * .11, R * .15, 0, 0, 7); g.fill(); }
+    else { g.strokeStyle = "#5A1E2E"; g.lineWidth = Math.max(2, R * .07); g.beginPath(); g.arc(bx - R * .1, by - R * .05, R * .2, .3, 1.6); g.stroke(); }
+    oeil(R * .45, -R * .3, R * .25, humeur);
+    if (humeur === "fache") sourcil(R * .45, -R * .3, R * .25, R);
+    if (humeur === "peur") sueur(R, t);
+    g.restore();
+  }
+
+  // le jefe des abysses : énorme, sombre, une lanterne et des taches qui brillent. Aussi l'ombre de l'ouverture.
+  function abisal(x, y, R, f, t, humeur, fatigue, silhouette) {
+    const [c, c2, lum] = silhouette ? ["#000000", "#000000", "#FFE27A"] : JEFE_COUL;
+    g.save(); g.translate(x, y); g.scale(f, 1);
+    const bat = Math.sin(t * 4) * .2, ouvre = humeur === "fache" ? .5 + Math.abs(Math.sin(t * 3)) * .5 : humeur === "peur" ? .15 : .3;
+    g.lineWidth = Math.max(2, R * .04); g.strokeStyle = silhouette ? "rgba(0,0,0,0)" : "rgba(0,0,0,.4)"; g.lineJoin = "round";
+    g.fillStyle = c;
+    g.beginPath(); g.moveTo(-R * 1.1, 0); g.lineTo(-R * 1.85, -R * .8 + bat * R); g.lineTo(-R * 1.6, 0); g.lineTo(-R * 1.85, R * .8 + bat * R); g.closePath(); g.fill(); g.stroke();
+    g.beginPath(); g.moveTo(-R * .6, -R * .75); g.lineTo(-R * .2, -R * 1.25); g.lineTo(R * .1, -R * .8); g.fill(); g.stroke();
+    g.beginPath(); g.ellipse(0, 0, R * 1.3, R * .9, 0, 0, 7); g.fill(); g.stroke();
+    if (!silhouette) { g.fillStyle = c2; g.beginPath(); g.ellipse(R * .1, R * .4, R * .95, R * .4, 0, 0, 7); g.fill(); }
+    // la grande gueule
+    g.fillStyle = silhouette ? "#000" : "#3A0E1E";
+    g.beginPath(); g.moveTo(R * 1.35, -R * .05); g.lineTo(R * .35, R * .05); g.lineTo(R * 1.35, R * (.15 + ouvre * .55)); g.closePath(); g.fill();
+    if (!silhouette) { dents(R * .55, -R * .02, R * .8, R * .2, 5); dents(R * .55, R * (.12 + ouvre * .5), R * .8, -R * .18, 5); }
+    // la lanterne
+    g.strokeStyle = silhouette ? "#000" : c2; g.lineWidth = R * .06;
+    g.beginPath(); g.moveTo(R * .4, -R * .8); g.quadraticCurveTo(R * 1, -R * 1.9, R * 1.6, -R * 1.25 + Math.sin(t * 2) * R * .08); g.stroke();
+    g.fillStyle = lum; g.shadowColor = lum; g.shadowBlur = R * .7;
+    g.beginPath(); g.arc(R * 1.6, -R * 1.2 + Math.sin(t * 2) * R * .08, R * .17, 0, 7); g.fill();
+    // les taches qui brillent
+    if (!silhouette) for (let i = 0; i < 5; i++) { g.globalAlpha *= 1; g.beginPath(); g.arc(-R * .8 + i * R * .32, -R * .1 + (i % 2) * R * .18, R * .06, 0, 7); g.fill(); }
+    g.shadowBlur = 0;
+    // l'œil
+    const ex = R * .65, ey = -R * .38, er = R * .17;
+    if (silhouette) { g.fillStyle = "#FFE27A"; g.shadowColor = "#FFE27A"; g.shadowBlur = 12; g.beginPath(); g.ellipse(ex, ey, er, er * .5, 0, 0, 7); g.fill(); g.shadowBlur = 0; }
+    else if (fatigue && humeur !== "fache") { g.strokeStyle = "#FFE27A"; g.lineWidth = Math.max(2, R * .05); g.beginPath(); g.arc(ex, ey, er * .8, .2, 2.9); g.stroke(); }
+    else if (humeur === "peur") oeil(ex, ey, er * 1.2, "peur");
+    else { g.fillStyle = "#FFE27A"; g.beginPath(); g.arc(ex, ey, er, 0, 7); g.fill(); g.fillStyle = "#1E2A44"; g.beginPath(); g.ellipse(ex + er * .2, ey, er * .25, er * .8, 0, 0, 7); g.fill(); sourcil(ex, ey, er, R); }
+    if (humeur === "peur" && !silhouette) sueur(R, t);
+    if (fatigue && humeur !== "fache" && !silhouette) { g.scale(f, 1); g.fillStyle = "#fff"; g.font = `900 ${Math.max(14, R * .3)}px Lexend, system-ui`; g.fillText("z", R * .7 * f, -R * 1.1 - (t * 20) % 20); }
+    g.restore();
+  }
+
+  function proie(e, x, y, R) {
+    const sp = e.sp, t = e.t, c = e.dore ? "#FFD34D" : sp.c;
+    if (sp.luz || e.dore) lueur(x, y, R * 2.4, e.dore ? "#FFD34D" : sp.luz, .45);
+    g.save(); g.translate(x, y); g.scale(e.f, 1);
+    g.lineWidth = Math.max(1.5, R * .08); g.strokeStyle = "rgba(0,0,0,.28)";
+    if (sp.k === "pez") {
+      const bat = Math.sin(t * 12) * .3;
+      g.fillStyle = c;
+      g.beginPath(); g.moveTo(-R * .7, 0); g.lineTo(-R * 1.3, -R * .55 + bat * R); g.lineTo(-R * 1.3, R * .55 + bat * R); g.closePath(); g.fill(); g.stroke();
+      g.beginPath(); g.ellipse(0, 0, R * .95, R * .62, 0, 0, 7); g.fill(); g.stroke();
+      if (!e.dore) { g.fillStyle = sp.c2; g.fillRect(-R * .25, -R * .58, R * .22, R * 1.16); }
+      g.fillStyle = "#fff"; g.beginPath(); g.arc(R * .45, -R * .15, R * .2, 0, 7); g.fill(); g.fillStyle = "#1E2A44"; g.beginPath(); g.arc(R * .5, -R * .15, R * .1, 0, 7); g.fill();
+    } else {
+      g.strokeStyle = c; g.lineCap = "round"; g.lineWidth = R * .55;
+      g.beginPath(); g.arc(0, -R * .1, R * .6, .3, 2.8); g.stroke();
+      g.strokeStyle = "rgba(0,0,0,.3)"; g.lineWidth = Math.max(1, R * .06);
+      for (let i = 0; i < 3; i++) { g.beginPath(); g.moveTo(-R * .3 + i * R * .3, R * .45); g.lineTo(-R * .35 + i * R * .3, R * .75 + Math.sin(t * 10 + i) * R * .08); g.stroke(); }
+      g.beginPath(); g.moveTo(R * .55, 0); g.quadraticCurveTo(R * 1.1, -R * .6, R * 1.3, -R * .3); g.stroke();
+      g.fillStyle = "#1E2A44"; g.beginPath(); g.arc(R * .5, -R * .05, R * .09, 0, 7); g.fill();
+    }
+    if (e.dore && Math.sin(t * 6) > .6) { g.fillStyle = "#fff"; g.beginPath(); g.arc(R * .4, -R * .6, R * .12, 0, 7); g.fill(); }
+    g.restore();
+  }
+
+  // l'encre du calamar sur l'écran : ça fait rire, et ça part tout seul
+  function tache(t) {
+    const a = t.t < .15 ? t.t / .15 : Math.max(0, 1 - (t.t - .9) / 1.5);
+    g.save(); g.globalAlpha = a * .6; g.fillStyle = "#2B1A40"; g.translate(t.x, t.y + t.t * 14);
+    g.beginPath(); t.pts.forEach((k, i) => { const an = i / t.pts.length * 6.283; g.lineTo(Math.cos(an) * t.r * k, Math.sin(an) * t.r * k); }); g.closePath(); g.fill();
+    g.restore();
+  }
+
+  // ---- La flèche vers le jefe quand il est hors de l'écran ----
+  function flecheJefe() {
+    if (!jefe) return;
+    const [sx, sy] = ecran(jefe.x, jefe.y), m = 26;
+    if (sx > -10 && sx < L + 10 && sy > -10 && sy < H + 10) return;
+    const a = Math.atan2(sy - H / 2, sx - L / 2), k = Math.min((L / 2 - m) / Math.abs(Math.cos(a) || 1e-6), (H / 2 - m) / Math.abs(Math.sin(a) || 1e-6));
+    const x = L / 2 + Math.cos(a) * k, y = H / 2 + Math.sin(a) * k, ok = jefe.r < hr() * .95;
+    g.save(); g.translate(x, y); g.rotate(a);
+    g.fillStyle = ok ? "#6EF08C" : JEFE_COUL[2]; g.strokeStyle = "#fff"; g.lineWidth = 3;
+    g.beginPath(); g.moveTo(16, 0); g.lineTo(-10, -13); g.lineTo(-4, 0); g.lineTo(-10, 13); g.closePath(); g.fill(); g.stroke();
+    g.restore();
+  }
+
+  // ---- La jauge en bas : les 4 niveaux, puis « assez grand pour le jefe ? » ----
+  function jauge() {
+    const w = Math.min(270, L * .72), x = (L - w) / 2, y = H - 40, h = 26;
+    g.save(); g.fillStyle = "rgba(10,20,45,.6)"; rond(x, y, w, h, 13); g.fill();
+    if (jefe) {
+      const k = borne(hr() / (jefe.r / .95), 0, 1);
+      g.fillStyle = k >= 1 ? "#6EF08C" : "#FFD34D"; rond(x + 4, y + 4, Math.max(18, (w - 8) * k), h - 8, 9); g.fill();
+      abisal(x + w - 18, y + 13, 9, -1, jefe.t, k >= 1 ? "peur" : "fache", false, false);
+    } else {
+      const n = 4, pas = (w - 30) / (n - 1);
+      let pr = 1;
+      if (tour === 0 && heros.niveau < 3) pr = borne(Math.log(heros.m / SEUILS[heros.niveau]) / Math.log(SEUILS[heros.niveau + 1] / SEUILS[heros.niveau]), 0, 1);
+      const niv = tour === 0 ? heros.niveau : 3;
+      g.fillStyle = "#FFD34D"; rond(x + 15, y + 11, pas * (niv + (niv < 3 ? pr : 0)), 4, 2); g.fill();
+      for (let i = 0; i < n; i++) etoile(x + 15 + i * pas, y + 13, i <= niv ? 10 : 7, i <= niv ? "#FFD34D" : "rgba(255,255,255,.35)");
+    }
+    g.restore();
+  }
+  function rond(x, y, w, h, r) { g.beginPath(); g.roundRect ? g.roundRect(x, y, w, h, r) : g.rect(x, y, w, h); }
+  function etoile(x, y, r, c) { g.fillStyle = c; g.beginPath(); for (let i = 0; i < 10; i++) { const a = i * Math.PI / 5 - Math.PI / 2, rr = i % 2 ? r * .45 : r; g.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr); } g.closePath(); g.fill(); }
+
+  function indiceDoigt() {
+    const t = performance.now() / 1000, [hx, hy] = ecran(heros.x, heros.y);
+    const k = (t % 1.6) / 1.6, x = hx + L * .1 + k * L * .18, y = hy + H * .1 - k * H * .06;
+    g.save(); g.globalAlpha = .9 - k * .5;
+    g.fillStyle = "rgba(255,255,255,.85)"; g.beginPath(); g.arc(x, y, 18, 0, 7); g.fill();
+    g.strokeStyle = "rgba(255,255,255,.6)"; g.lineWidth = 3; g.beginPath(); g.arc(x, y, 18 + k * 14, 0, 7); g.stroke();
+    g.restore();
+  }
+
+  // Pour les tests
+  window.devora = {
+    pouvoir: () => { const p = pouvoirPret; lancerPouvoir(); return p; },
+    etat: () => ({ tJeu: Math.round(tJeu), tour, p: +prog().toFixed(2), zone, m: +heros.m.toFixed(2), niveau: heros.niveau, bouchees, jefe: !!jefe, jefeMange, festin, fini, pret: pouvoirPret, ents: ents.length,
+      types: ents.reduce((o, e) => { const k = e.esp || e.type; o[k] = (o[k] || 0) + 1; return o; }, {}) }),
+    evoluer: () => evoluer(),
+    // l'écran où se trouve la bête mangeable la plus proche (pour un joueur automatique)
+    cible: () => {
+      const R = hr(); let best = null, bd = 1e9;
+      for (const e of ents) {
+        if (e.mort || !mangeablePar(e, R)) continue;
+        const [cx, cy] = contact(e), d = Math.hypot(cx - heros.x, cy - heros.y) - (e.type === "proie" ? 0 : e.type === "jefe" ? R * 6 : R * 3);
+        if (d < bd) { bd = d; best = [cx, cy]; }
+      }
+      if (!best) return null;
+      const r = toile.getBoundingClientRect(), [x, y] = ecran(best[0], best[1]);
+      return { x: r.left + borne(x, 10, L - 10), y: r.top + borne(y, 10, H - 10) };
+    },
+  };
+})();
+</script>
+</body>
+</html>
